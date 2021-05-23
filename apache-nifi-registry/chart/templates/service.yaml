@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nifi-registry-service
+  labels:
+    app: {{ include "nifireg.fullname" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+{{- if .Values.headless.annotations }}
+  annotations:
+{{ toYaml .Values.headless.annotations | indent 4 }}
+{{- end }}
+spec:
+  selector:
+    app: {{ template "nifireg.fullname" . }}
+    release: {{ .Release.Name }}
+  type: {{ .Values.headless.type }}
+  loadBalancerIP: {{ .Values.headless.ip }}
+  ports:
+  {{- if .Values.config.security.https.enabled }}
+    - name: {{ .Values.portName | default "https" }}
+      protocol: TCP
+      port: 18443
+      targetPort: {{ .Values.portNumber | default "18443" }}
+  {{- else }}
+    - name: {{ .Values.portName | default "http" }}
+      protocol: TCP
+      port: 18080
+      targetPort: {{ .Values.portNumber | default "18080" }}
+  {{- end }}

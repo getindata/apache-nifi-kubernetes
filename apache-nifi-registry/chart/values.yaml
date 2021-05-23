@@ -1,0 +1,184 @@
+---
+
+# Number of nifi nodes
+replicaCount: 1
+
+image:
+  repository: dockerregistry.rossmann.com.pl:202/bigdata-docker-registry/nifi/nifi-registry
+  tag: "0.8.0"
+  pullPolicy: Always
+  pullSecret: regcred
+
+securityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+
+# headless service
+headless:
+  type: LoadBalancer
+  ip: 192.168.212.50
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+
+resources:
+  requests:
+    cpu: 2000m
+    memory: 4096Mi
+  limits:
+    cpu: 2000m
+    memory: 4096Mi
+
+config:
+  f5DnsCert: nifi-registry.rossmann.com.pl
+  security:
+    https:
+      enabled: true
+    certificateName: nifi-registry-ca-cs
+    token: feu8y3fy4t3r1432re4dexrcfx4
+  ports:
+    http: 18080
+    https: 18443
+  db:
+    username: nifiregistry
+    password: dbpasswordtoreplace
+    host: pgpool-vip.pd.rossmann.com.pl
+    port: 5433
+    dbname: nifiregistryk8s
+  git:
+    address: gitlab.pd.rossmann.com.pl/getindata/rossmann
+    repo: data-pipelines-nifi-registry
+    username: nifi.registry
+    password: password
+
+nfs:
+  ip: 192.168.212.90
+  folder: /mnt/sharedfolder/nifiregistry
+  folderHadoopConf: /mnt/sharedfolder/hadoop
+
+auth:
+  ldap:
+    enabled: true
+    managerDn: cn=ds_ad_reader,ou=userssystemy,dc=rossmann,dc=com,dc=pl
+    host: ldaps://rossmann.com.pl:636
+    password: ldappasswordtoreplace
+    searchBaseUsers: dc=rossmann,dc=com,dc=pl
+    searchBaseGroup: dc=rossmann,dc=com,dc=pl
+    searchFilterUsers: (sAMAccountName={0})
+    searchFilterGroups: objectclass=group
+  ranger:
+    host: master-01.pd.rossmann.com.pl
+    port: 6080
+    hdfs: Rossmann
+
+environment:
+  prod: false
+
+nifi_access_internal: true
+
+serviceType: LoadBalancer
+
+## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+nodeSelector:
+  nifi: node
+
+flow_persistence:
+  mode: "git"
+  git:
+    remote: origin
+
+extraVolumes:
+  - name: nifi-registry-authorizers
+    configMap:
+      name: nifi-registry-authorizers
+  - name: nifi-registry-bootstrap
+    configMap:
+      name: nifi-registry-bootstrap
+  - name: nifi-registry-identity
+    configMap:
+      name: nifi-registry-identity
+  - name: krb5-conf
+    configMap:
+      name: nifi-registry-krb5
+  - name: nifi-registry-logback
+    configMap:
+      name: nifi-registry-logback
+  - name: nifi-registry-properties
+    configMap:
+      name: nifi-registry-properties
+  - name: nifi-registry-providers
+    configMap:
+      name: nifi-registry-providers
+  - name: rossmannca
+    secret:
+      secretName: rossmannca
+  - name: ldapca
+    secret:
+      secretName: ldapca
+  - name: ranger-audit
+    configMap:
+      name: nifi-registry-ranger-audit
+  - name: ranger-security
+    configMap:
+      name: nifi-registry-ranger-security
+  - name: keystore
+    secret:
+      secretName: nifi-registry-certs
+      items:
+        - key: keystore.jks
+          path: keystore.jks
+  - name: truststore
+    secret:
+      secretName: nifi-registry-certs
+      items:
+        - key: truststore.jks
+          path: truststore.jks
+  - name: registrycakubernetesprod
+    secret:
+      secretName: registrycakubernetesprod
+  - name: registrycaprod
+    secret:
+      secretName: registrycaprod
+  - name: registrypdcaprod
+    secret:
+      secretName: registrypdcaprod
+  - name: registryca
+    secret:
+      secretName: registryca
+
+extraVolumeMounts:
+  - name: nifi-registry-authorizers
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/authorizers.xml
+    subPath: nifi-registry.properties
+  - name: nifi-registry-bootstrap
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/bootstrap.conf
+    subPath: bootstrap.conf
+  - name: nifi-registry-identity
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/identity-providers.xml
+    subPath: identity-providers.xml
+  - name: krb5-conf
+    mountPath: /etc/krb5.conf
+    subPath: /etc/krb5.conf
+  - name: nifi-registry-logback
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/logback.xml
+    subPath: logback.xml
+  - name: nifi-registry-properties
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/nifi-registry.properties
+    subPath: nifi-registry.properties
+  - name: nifi-registry-providers
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/providers.xml
+    subPath: providers.xml
+  - name: nfs-git-storage
+    mountPath: /opt/nifi-registry/nifi-registry-current/git_storage
+  - name: rossmannca
+    mountPath: /tmp/ROSSMANNCA.crt
+    subPath: ROSSMANNCA.crt
+  - name: ldapca
+    mountPath: /tmp/ldapca.crt
+    subPath: ldapca.crt
+  - name: truststore
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/truststore.jks
+    subPath: truststore.jks
+  - name: keystore
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/keystore.jks
+    subPath: keystore.jks

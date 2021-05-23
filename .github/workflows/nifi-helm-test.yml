@@ -1,0 +1,24 @@
+name: Helm Test
+
+on:
+  push:
+    paths:
+      - 'helm-chart/backend-app/**'
+  pull_request:
+    branches:
+      - develop
+      - main
+
+jobs:
+  test-helm:
+
+    name: Run Helm templating and linter
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Test Backend App
+        uses: WyriHaximus/github-action-helm3@v2.0
+        with:
+          exec: helm lint ./helm-chart/backend-app && helm template --dry-run ./helm-chart/backend-app
