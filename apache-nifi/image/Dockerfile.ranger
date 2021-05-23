@@ -1,0 +1,39 @@
+FROM apache/nifi:1.13.2
+LABEL maintainer="albert.lewandowski@getindata.com"
+
+ARG NIFI_VERSION=1.13.2
+
+ENV NIFI_BASE_DIR=/opt/nifi
+ENV NIFI_HOME ${NIFI_BASE_DIR}/nifi-current
+
+# Install Ranger Plugin
+RUN wget https://repo1.maven.org/maven2/org/apache/nifi/nifi-ranger-nar/${NIFI_VERSION}/nifi-ranger-nar-${NIFI_VERSION}.nar \
+    && mv nifi-ranger-nar-${NIFI_VERSION}.nar ${NIFI_HOME}/lib
+
+# Install Apache Atlas Plugin
+RUN wget https://repo1.maven.org/maven2/org/apache/nifi/nifi-atlas-nar/${NIFI_VERSION}/nifi-atlas-nar-${NIFI_VERSION}.nar \
+    && mv nifi-atlas-nar-${NIFI_VERSION}.nar ${NIFI_HOME}/lib
+
+# Install Hive3 NAR 
+RUN wget https://repo1.maven.org/maven2/org/apache/nifi/nifi-hive3-nar/${NIFI_VERSION}/nifi-hive3-nar-${NIFI_VERSION}.nar \
+    && mv nifi-hive3-nar-${NIFI_VERSION}.nar ${NIFI_HOME}/lib
+
+# ExtractEmailHeaders does not work with Java 11
+# https://issues.apache.org/jira/browse/NIFI-6961
+# RUN rm -f ${NIFI_HOME}/lib/java11/javax.activation-api-1.2.0.jar \
+#   && wget https://repo1.maven.org/maven2/com/sun/activation/javax.activation/1.2.0/javax.activation-1.2.0.jar \ 
+#    && mv javax.activation-1.2.0.jar ${NIFI_HOME}/lib/java11/javax.activation-1.2.0.jar
+
+# It is required otherwise there is an error caused by Ranger Plugin
+USER root
+RUN useradd --shell /bin/bash nifi-cdc \
+    && cp /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so \
+    && apt install glibc-source uclibc-source -y \
+    && ln -s /lib/x86_64-linux-gnu/libc.so /usr/local/lib/libc.so  \
+    && ldconfig
+
+# Install krb5 libs
+RUN apt update -y \
+    && DEBIAN_FRONTEND=noninteractive apt install -yqq krb5-user
+
+USER nifi

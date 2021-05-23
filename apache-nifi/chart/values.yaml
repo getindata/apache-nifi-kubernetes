@@ -1,0 +1,207 @@
+---
+
+# Number of nifi nodes
+replicaCount: 1
+
+image:
+  repository: "apache/nifi"
+  tag: "1.13.2"
+  pullPolicy: Always
+  pullSecret: {}
+
+securityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+
+sts:
+  # Parallel podManagementPolicy for faster bootstrap and teardown. Default is OrderedReady.
+  podManagementPolicy: Parallel
+  AntiAffinity: soft
+  hostPort: null
+  pod:
+    annotations:
+      security.alpha.kubernetes.io/sysctls: net.ipv4.ip_local_port_range=10000 65000
+
+properties:
+  # Add external IP
+  f5Dns: "nificdc.getindata.com:8443"
+  f5DnsCert: "nificdc.getindata.com"
+  # use externalSecure for when inbound SSL is provided by nginx-ingress or other external mechanism
+  externalSecure: false
+  isNode: true
+  httpPort: 8080
+  httpsPort: 8443
+  nodePort: 31889
+  clusterPort: 6007
+  clusterSecure: true
+  needClientAuth: false
+  provenanceStorage: "8 GB"
+  siteToSite:
+    secure: false
+    port: 10000
+  authorizer: ranger-provider
+  # use properties.safetyValve to pass explicit 'key: value' pairs that overwrite other configuration
+  safetyValve:
+    #nifi.variable.registry.properties: "${NIFI_HOME}/example1.properties, ${NIFI_HOME}/example2.properties"
+    nifi.web.http.network.interface.default: eth0
+    # listen to loopback interface so "kubectl port-forward ..." works
+    nifi.web.http.network.interface.lo: lo
+
+# Nifi User Authentication
+auth:
+  ldap:
+    enabled: true
+    managerDn: ""
+    host: ""
+    password: ""
+    # initialAdminIdentity:
+    searchBaseUsers: dc=getindata,dc=com,dc=pl
+    searchBaseGroup: dc=getindata,dc=com,dc=pl
+    searchFilterUsers: (sAMAccountName={0})
+    searchFilterGroups: objectclass=group
+  # Mandatory when using LDAP authentication and NiFi Registry with SSL
+  tls:
+    enabled: true
+    password: ""
+    certificateName: ""
+    token: ""
+
+# headless service
+headless:
+  type: LoadBalancer
+  ip: 127.0.0.1
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+
+# ui service
+service:
+  type: NodePort
+  httpPort: 8080
+  httpsPort: 8443
+  annotations: {}
+  loadBalancerIP:
+    ## Load Balancer sources
+    ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
+    ##
+    loadBalancerSourceRanges:
+      - 10.10.10.0/24
+
+  # Enables additional port/ports to nifi service for internal processors
+  processors:
+    enabled: false
+    ports:
+      - name: processor01
+        port: 7001
+        targetPort: 7001
+        #nodePort: 30701
+      - name: processor02
+        port: 7002
+        targetPort: 7002
+        #nodePort: 30702
+
+## Configure Ingress based on the documentation here: https://kubernetes.io/docs/concepts/services-networking/ingress/
+## It requires support of SSL Passthrough from the Ingress side
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    ingress.kubernetes.io/ssl-redirect: "true"
+    virtual-server.f5.com/ip: "127.0.0.1"
+  tls:
+    secret: nifi-getindata-tls-secret
+  hosts: nifi.getindata.com
+  path: /
+  # If you want to change the default path, see this issue https://github.com/cetic/helm-nifi/issues/22
+
+# Amount of memory to give the NiFi java heap
+jvmMemory: 2g
+
+# Separate image for tailing each log separately
+sidecar:
+  image: ez123/alpine-tini
+  tag: latest
+
+# Busybox image
+busybox:
+  image: busybox
+  tag: latest
+
+## Enable persistence using Persistent Volume Claims
+## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+##
+persistence:
+  enabled: false
+
+  # When creating persistent storage, the NiFi helm chart can either reference an already-defined
+  # storage class by name, such as "standard" or can define a custom storage class by specifying
+  # customStorageClass: true and providing the "storageClass", "storageProvisioner" and "storageType".
+  # For example, to use SSD storage on Google Compute Engine see values-gcp.yaml
+  #
+  # To use a storage class that already exists on the Kubernetes cluster, we can simply reference it by name.
+  # For example:
+  storageClass: standard
+  #
+  # The default storage class is used if this variable is not set.
+
+  accessModes:  [ReadWriteMany]
+  ## Storage Capacities for persistent volumes
+  # Storage capacity for the 'data' directory, which is used to hold things such as the flow.xml.gz, configuration, state, etc.
+  dataStorage:
+    size: 1Gi
+  # Storage capacity for the FlowFile repository
+  flowfileRepoStorage:
+    size: 20Gi
+  # Storage capacity for the Content repository
+  contentRepoStorage:
+    size: 10Gi
+  # Storage capacity for the Provenance repository. When changing this, one should also change the properties.provenanceStorage value above, also.
+  provenanceRepoStorage:
+    size: 10Gi
+  # Storage capacity for nifi logs
+  logStorage:
+    size: 10Gi
+
+# Configure resource requests and limits
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+##
+resources:
+  requests:
+    cpu: 2000m
+    memory: 4096Mi
+  limits:
+    cpu: 2000m
+    memory: 4096Mi
+
+logresources:
+  requests:
+    cpu: 10m
+    memory: 10Mi
+  limits:
+    cpu: 50m
+    memory: 50Mi
+
+## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+nodeSelector:
+  node: nifi
+
+tolerations: []
+
+initContainers: {}
+
+extraVolumeMounts: {}
+
+extraVolumes: {}
+
+## Kerberos settings
+kerberos:
+  enabled: false
+  keytab: /etc/security/keytabs/nifi-cdc.service.keytab
+  principal: nifi-cdc@GETINDATA.COM
+
+## Ranger settings
+ranger:
+  enabled: true
+  admin: http://master-02t.getindata.com:6080
+  serviceName: Ranger_nifi-gid
+  hdfsAudit: hdfs://getindata/ranger/audit

@@ -1,0 +1,8 @@
+Cluster endpoint IP address will be available at:
+kubectl get svc {{ .Release.Name }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[*].ip}'
+
+Cluster endpoint domain name is: {{.Values.properties.webProxyHost}} - please update your DNS or /etc/hosts accordingly! 
+
+Once you are done, your NiFi instance will be available at:
+
+  {{ if .Values.properties.httpsPort }}https{{- else }}http{{ end }}://{{.Values.properties.webProxyHost}}/nifi
