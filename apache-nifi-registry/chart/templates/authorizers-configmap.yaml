@@ -36,13 +36,13 @@ data:
             <property name="Read Timeout">10 secs</property>
             <property name="Sync Interval">30 mins</property>
 
-            <property name="User Search Base">dc=rossmann,dc=com,dc=pl</property>
+            <property name="User Search Base">dc=getindata,dc=com,dc=pl</property>
             <property name="User Search Scope">ONE_LEVEL</property>
             <property name="User Object Class">person</property>
             <property name="User Search Filter"></property>
             <property name="Identity Strategy">USE_USERNAME</property>
 
-            <property name="Group Search Base">dc=rossmann,dc=com,dc=pl</property>
+            <property name="Group Search Base">dc=getindata,dc=com,dc=pl</property>
             <property name="Group Object Class">group</property>
             <property name="Group Search Scope">ONE_LEVEL</property>
             <property name="Group Search Filter"></property>
@@ -56,7 +56,7 @@ data:
             <class>org.apache.nifi.registry.ranger.RangerAuthorizer</class>
             <property name="Ranger Service Type">nifi-registry</property>
             <property name="User Group Provider">ldap-user-group-provider</property>
-            <property name="Ranger Application Id">Rossmann_nifi-registry</property>
+            <property name="Ranger Application Id">nifi-registry</property>
             <property name="Ranger Security Config Path">./conf/ranger-nifi-registry-security.xml</property>
             <property name="Ranger Audit Config Path">./conf/ranger-nifi-registry-audit.xml</property>
            <property name="Ranger Admin Identity">CN=ranger, OU=NIFI</property>

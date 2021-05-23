@@ -1,10 +1,10 @@
 ---
 
-# Number of nifi nodes
+# Number of nifi registry nodes
 replicaCount: 1
 
 image:
-  repository: dockerregistry.rossmann.com.pl:202/bigdata-docker-registry/nifi/nifi-registry
+  repository: apache/nifi-registry
   tag: "0.8.0"
   pullPolicy: Always
   pullSecret: regcred
@@ -17,7 +17,7 @@ securityContext:
 # headless service
 headless:
   type: LoadBalancer
-  ip: 192.168.212.50
+  ip: 127.0.0.1
   annotations:
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 
@@ -29,50 +29,50 @@ resources:
     cpu: 2000m
     memory: 4096Mi
 
+jvm:
+  xmx: "1024m"
+  xms: "1024m"
+
+kerberos:
+  enabled: true
+
 config:
-  f5DnsCert: nifi-registry.rossmann.com.pl
+  f5DnsCert: nifi-registry.getindata.com
   security:
     https:
       enabled: true
     certificateName: nifi-registry-ca-cs
-    token: feu8y3fy4t3r1432re4dexrcfx4
   ports:
     http: 18080
     https: 18443
   db:
+    class: "org.postgresql.Driver"
     username: nifiregistry
     password: dbpasswordtoreplace
-    host: pgpool-vip.pd.rossmann.com.pl
+    host: pgpool-getindata.com
     port: 5433
     dbname: nifiregistryk8s
   git:
-    address: gitlab.pd.rossmann.com.pl/getindata/rossmann
+    address: gitlab.com/getindata/registry
     repo: data-pipelines-nifi-registry
     username: nifi.registry
     password: password
 
-nfs:
-  ip: 192.168.212.90
-  folder: /mnt/sharedfolder/nifiregistry
-  folderHadoopConf: /mnt/sharedfolder/hadoop
-
 auth:
   ldap:
     enabled: true
-    managerDn: cn=ds_ad_reader,ou=userssystemy,dc=rossmann,dc=com,dc=pl
-    host: ldaps://rossmann.com.pl:636
+    managerDn: cn=ad,ou=users,dc=getindata,dc=com
+    host: ldaps://getindata.com:636
     password: ldappasswordtoreplace
-    searchBaseUsers: dc=rossmann,dc=com,dc=pl
-    searchBaseGroup: dc=rossmann,dc=com,dc=pl
+    searchBaseUsers: dc=getindata,dc=com,dc=pl
+    searchBaseGroup: dc=getindata,dc=com,dc=pl
     searchFilterUsers: (sAMAccountName={0})
     searchFilterGroups: objectclass=group
   ranger:
-    host: master-01.pd.rossmann.com.pl
+    enabled: false
+    host: master-01.getindata.com
     port: 6080
-    hdfs: Rossmann
-
-environment:
-  prod: false
+    hdfs: getindata
 
 nifi_access_internal: true
 
@@ -80,7 +80,7 @@ serviceType: LoadBalancer
 
 ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
 nodeSelector:
-  nifi: node
+  node: nifi
 
 flow_persistence:
   mode: "git"
@@ -109,12 +109,6 @@ extraVolumes:
   - name: nifi-registry-providers
     configMap:
       name: nifi-registry-providers
-  - name: rossmannca
-    secret:
-      secretName: rossmannca
-  - name: ldapca
-    secret:
-      secretName: ldapca
   - name: ranger-audit
     configMap:
       name: nifi-registry-ranger-audit
@@ -133,18 +127,6 @@ extraVolumes:
       items:
         - key: truststore.jks
           path: truststore.jks
-  - name: registrycakubernetesprod
-    secret:
-      secretName: registrycakubernetesprod
-  - name: registrycaprod
-    secret:
-      secretName: registrycaprod
-  - name: registrypdcaprod
-    secret:
-      secretName: registrypdcaprod
-  - name: registryca
-    secret:
-      secretName: registryca
 
 extraVolumeMounts:
   - name: nifi-registry-authorizers
@@ -170,12 +152,6 @@ extraVolumeMounts:
     subPath: providers.xml
   - name: nfs-git-storage
     mountPath: /opt/nifi-registry/nifi-registry-current/git_storage
-  - name: rossmannca
-    mountPath: /tmp/ROSSMANNCA.crt
-    subPath: ROSSMANNCA.crt
-  - name: ldapca
-    mountPath: /tmp/ldapca.crt
-    subPath: ldapca.crt
   - name: truststore
     mountPath: /opt/nifi-registry/nifi-registry-current/conf/truststore.jks
     subPath: truststore.jks

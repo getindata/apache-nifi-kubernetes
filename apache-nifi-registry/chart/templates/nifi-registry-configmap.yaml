@@ -22,8 +22,10 @@ data:
     nifi.registry.web.jetty.working.directory=./work/jetty
     nifi.registry.web.jetty.threads=200
 
+    {{- if .Values.auth.ranger.enabled }}
     # security properties #
     nifi.registry.extension.dir.ranger=/opt/nifi-registry/nifi-registry-current/ext/ranger/lib
+    {{- end }}
 
     nifi.registry.security.keystore=/opt/nifi-registry/nifi-registry-current/conf/keystore.jks
     nifi.registry.security.keystoreType=jks
@@ -34,9 +36,19 @@ data:
     nifi.registry.security.truststorePasswd=
     nifi.registry.security.needClientAuth=false
     nifi.registry.security.authorizers.configuration.file=/opt/nifi-registry/nifi-registry-current/conf/authorizers.xml
+
+    {{- if .Values.auth.ranger.enabled }}
     nifi.registry.security.authorizer=ranger-authorizer
+    {{- else }}
+    nifi.registry.security.authorizer=file-authorizer
+    {{- end }}
     nifi.registry.security.identity.providers.configuration.file=/opt/nifi-registry/nifi-registry-current/conf/new-identity-providers.xml
+
+    {{- if .Values.auth.ldap.enabled }}
     nifi.registry.security.identity.provider=ldap-identity-provider
+    {{- else }}
+    nifi.registry.security.identity.provider=file-identity-provider
+    {{- end }}
 
     # sensitive property protection properties #
     # nifi.registry.sensitive.props.additional.keys=
@@ -58,7 +70,7 @@ data:
 
     nifi.registry.db.url=jdbc:postgresql://{{ .Values.config.db.host }}:{{ .Values.config.db.port }}/{{ .Values.config.db.dbname }}
 
-    nifi.registry.db.driver.class=org.postgresql.Driver
+    nifi.registry.db.driver.class={{ .Values.config.db.class }}
     nifi.registry.db.driver.directory=/opt/nifi-registry/current/lib
     nifi.registry.db.username={{ .Values.config.db.username }}
     nifi.registry.db.password={{ .Values.config.db.password }}

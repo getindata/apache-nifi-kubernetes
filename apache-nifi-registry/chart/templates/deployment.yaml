@@ -97,7 +97,7 @@ spec:
               NIFI_REGISTRY_HOME=/opt/nifi-registry/nifi-registry-current
 
               echo 'Create directory for Apache Ranger policy cache...'
-              touch /etc/ranger/Rossmann_nifi-registry/policycache/Rossmann_nifi-registry_Rossmann_nifi-registry.json
+              touch /etc/ranger/nifi-registry/policycache/nifi-registry.json
 
               echo '...0'
               cd ${NIFI_REGISTRY_HOME}
@@ -164,34 +164,6 @@ spec:
               cat "${NIFI_REGISTRY_HOME}/conf/nifi-registry.temp" > "${NIFI_REGISTRY_HOME}/conf/nifi-registry.properties"
               cat "${NIFI_REGISTRY_HOME}/conf/authorizers.temp" > "${NIFI_REGISTRY_HOME}/conf/authorizers.xml"
 
-              # Import certificate for LDAPS and Rossmann
-              keytool -import -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -alias rossmannca -file /tmp/ROSSMANNCA.crt -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-              keytool -import -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -alias lcapca -file /tmp/ldapca.crt -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-              # keytool -import -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -alias registrycakubernetesprod -file /tmp/registrycakubernetesprod.crt -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-              # keytool -import -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -alias registrycaprod -file /tmp/registrycaprod.crt -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-              # keytool -import -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -alias registrypdcaprod -file /tmp/registrypdcaprod.crt -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-
-              # Import certificates from NiFis 
-              echo -n|openssl s_client -connect nifi-sandbox-headless.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-sandbox.crt
-              keytool -import -file /tmp/nifi-sandbox.crt -alias nifi-sandbox-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-
-              echo -n|openssl s_client -connect nifi-cdc-headless.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-cdc.crt
-              keytool -import -file /tmp/nifi-cdc.crt -alias nifi-cdc-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-
-              echo -n|openssl s_client -connect nifi-mapping-headless.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-mapping.crt
-              keytool -import -file /tmp/nifi-mapping.crt -alias nifi-mapping-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-
-              echo -n|openssl s_client -connect nifi-marketing-headless.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-marketing.crt
-              keytool -import -file /tmp/nifi-marketing.crt -alias nifi-marketing-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-
-              # Import certificates from NiFi [01-03]
-              echo -n|openssl s_client -connect nifi-01.pd.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-01.crt
-              keytool -import -file /tmp/nifi-01.crt -alias nifi-01-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-              echo -n|openssl s_client -connect nifi-02.pd.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-02.crt
-              keytool -import -file /tmp/nifi-02.crt -alias nifi-02-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-              echo -n|openssl s_client -connect nifi-03.pd.rossmann.com.pl:8443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/nifi-03.crt
-              keytool -import -file /tmp/nifi-03.crt -alias nifi-03-cs -keystore ${NIFI_REGISTRY_HOME}/conf/truststore.jks -storepass ${NIFI_TRUST_STORE_PASSWORD} -noprompt
-
               {{- if .Values.config.security.https.enabled }}
               prop_replace nifi.registry.security.keystore                 ${NIFI_KEY_STORE}
               prop_replace nifi.registry.security.keystoreType             ${NIFI_KEY_STORE_TYPE}
@@ -250,20 +222,12 @@ spec:
               subPath: providers.xml
             - name: nfs-git-storage
               mountPath: /opt/nifi-registry/nifi-registry-current/git_storage
-            - name: rossmannca
-              mountPath: /tmp/ROSSMANNCA.crt
-              subPath: ROSSMANNCA.crt
-            - name: ldapca
-              mountPath: /tmp/ldapca.crt
-              subPath: ldapca.crt
             - name: ranger-security
               mountPath: /opt/nifi-registry/nifi-registry-current/conf/ranger-nifi-registry-security.xml
               subPath: ranger-nifi-registry-security.xml
             - name: ranger-audit
               mountPath: /opt/nifi-registry/nifi-registry-current/conf/ranger-nifi-registry-audit.xml
               subPath: ranger-nifi-registry-audit.xml
-            - name: "hadoop-conf"
-              mountPath: /etc/hadoop/conf
             - name: truststore
               mountPath: /opt/nifi-registry/nifi-registry-current/truststore.jks
               subPath: truststore.jks
@@ -282,7 +246,3 @@ spec:
             - name: registryca
               mountPath: /tmp/registryca.crt
               subPath: registryca.crt
-            {{- if .Values.environment.prod }}
-            - name: "kerberos-dir"
-              mountPath: /var/lib/sss/pubconf/krb5.include.d
-            {{- end }}

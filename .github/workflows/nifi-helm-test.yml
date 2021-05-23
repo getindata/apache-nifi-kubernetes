@@ -3,14 +3,14 @@ name: Helm Test
 on:
   push:
     paths:
-      - 'helm-chart/backend-app/**'
+      - 'apache-nifi/chart/**'
   pull_request:
     branches:
       - develop
       - main
 
 jobs:
-  test-helm:
+  test-helm-nifireg:
 
     name: Run Helm templating and linter
     runs-on: ubuntu-20.04
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
 
-      - name: Test Backend App
+      - name: Test NiFi Helm chart
         uses: WyriHaximus/github-action-helm3@v2.0
         with:
-          exec: helm lint ./helm-chart/backend-app && helm template --dry-run ./helm-chart/backend-app
+          exec: helm lint apache-nifi/chart && helm template --dry-run apache-nifi/chart

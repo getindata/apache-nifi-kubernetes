@@ -1,4 +1,4 @@
-{{- if .Values.environment.prod }}
+{{- if .Values.kerberos.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,79 +10,17 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   krb5.conf: |+
-      includedir /etc/krb5.conf.d/
-      includedir /var/lib/sss/pubconf/krb5.include.d/
+    includedir /etc/krb5.conf.d/
+    includedir /var/lib/sss/pubconf/krb5.include.d/
 
-      [libdefaults]
-        renew_lifetime = 7d
-        forwardable = true
-        default_realm = PD.ROSSMANN.COM.PL
-        ticket_lifetime = 24h
-        dns_lookup_realm = false
-        dns_lookup_kdc = true
-        default_ccache_name = /tmp/krb5cc_%{uid}
-        #default_tgs_enctypes = aes des3-cbc-sha1 rc4 des-cbc-md5
-        #default_tkt_enctypes = aes des3-cbc-sha1 rc4 des-cbc-md5
-
-      [domain_realm]
-        pd.rossmann.com.pl = PD.ROSSMANN.COM.PL
-
-      [logging]
-        default = FILE:/var/log/krb5kdc.log
-        admin_server = FILE:/var/log/kadmind.log
-        kdc = FILE:/var/log/krb5kdc.log
-
-      [realms]
-        PD.ROSSMANN.COM.PL = {
-        admin_server = kdc-01.pd.rossmann.com.pl
-        kdc = kdc-01.pd.rossmann.com.pl
-        kdc = kdc-02.pd.rossmann.com.pl
-        master_kdc = kdc-01.pd.rossmann.com.pl
-        auth_to_local = RULE:[1:$1@$0](^.*@ROSSMANN.COM.PL$)s/@ROSSMANN.COM.PL/@rossmann.com.pl/
-        auth_to_local = DEFAULT
-        }
-
-      [capaths]
-        PD.ROSSMANN.COM.PL = {
-        PDZ.ROSSMANN.COM.PL = .
-        }
-{{- else -}}
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nifi-registry-krb5
-  labels:
-    app: {{ template "nifireg.fullname" . }}
-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
-data:
-  krb5.conf: |+
     [libdefaults]
       renew_lifetime = 7d
       forwardable = true
-      default_realm = PDT.ROSSMANN.COM.PL
+      default_realm = GETINDATA.COM
       ticket_lifetime = 24h
       dns_lookup_realm = false
       dns_lookup_kdc = true
       default_ccache_name = /tmp/krb5cc_%{uid}
       #default_tgs_enctypes = aes des3-cbc-sha1 rc4 des-cbc-md5
       #default_tkt_enctypes = aes des3-cbc-sha1 rc4 des-cbc-md5
-
-    [domain_realm]
-      pdt.rossmann.com.pl = PDT.ROSSMANN.COM.PL
-
-    [logging]
-      default = FILE:/var/log/krb5kdc.log
-      admin_server = FILE:/var/log/kadmind.log
-      kdc = FILE:/var/log/krb5kdc.log
-
-    [realms]
-      PDT.ROSSMANN.COM.PL = {
-      admin_server = kdc-01t.pdt.rossmann.com.pl
-      kdc = kdc-01t.pdt.rossmann.com.pl
-
-      auth_to_local = RULE:[1:$1@$0](^.*@PDT.ROSSMANN.COM.PL$)s/@PDT.ROSSMANN.COM.PL/@pdt.rossmann.com.pl/
-      auth_to_local = DEFAULT
-      }
 {{- end }}

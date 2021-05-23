@@ -1,3 +1,4 @@
+{{- if .Values.auth.ranger.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -13,7 +14,7 @@ data:
     <configuration  xmlns:xi="http://www.w3.org/2001/XInclude">
       <property>
         <name>ranger.plugin.nifi-registry.policy.cache.dir</name>
-        <value>/etc/ranger/Rossmann_nifi-registry/policycache</value>
+        <value>/etc/ranger/nifi-registry/policycache</value>
       </property>
       <property>
         <name>ranger.plugin.nifi-registry.policy.pollIntervalMs</name>
@@ -37,6 +38,7 @@ data:
       </property>
       <property>
         <name>ranger.plugin.nifi-registry.service.name</name>
-        <value>Rossmann_nifi-registry</value>
+        <value>nifi-registry</value>
       </property>
     </configuration>
+{{- end }}

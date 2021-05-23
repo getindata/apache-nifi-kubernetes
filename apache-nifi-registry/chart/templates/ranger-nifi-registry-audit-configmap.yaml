@@ -1,3 +1,4 @@
+{{- if .Values.auth.ranger.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -16,3 +17,4 @@ data:
         <value>hdfs://{{ .Values.auth.ranger.hdfs }}/ranger/audit</value>
       </property>
     </configuration>
+{{- end }}
