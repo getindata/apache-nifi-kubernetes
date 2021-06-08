@@ -13,7 +13,8 @@ metadata:
 {{- end }}
 spec:
   type: {{ .Values.headless.type }}
-  loadBalancerIP: {{ .Values.headless.ip }}
+  # It can be useful for setting up IP if we already have created Load Balancer
+  # loadBalancerIP: {{ .Values.headless.ip }}
 #  clusterIP: None
   ports:
 {{- if .Values.properties.clusterSecure }}
@@ -31,54 +32,3 @@ spec:
   selector:
     app: {{ include "apache-nifi.name" . | quote }}
     release: {{ .Release.Name | quote }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ template "apache-nifi.fullname" . }}
-  labels:
-    app: {{ include "apache-nifi.name" . | quote }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
-    release: {{ .Release.Name | quote }}
-    heritage: {{ .Release.Service | quote }}
-{{- if .Values.service.annotations }}
-  annotations:
-{{ toYaml .Values.service.annotations | indent 4 }}
-{{- end }}
-spec:
-  type: {{ .Values.service.type }}
-  {{- if .Values.service.loadBalancerIP }}
-  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
-  {{- end }}
-  {{- if .Values.service.loadBalancerSourceRanges }}
-  loadBalancerSourceRanges:
-  {{ with .Values.service.loadBalancerSourceRanges }}
-{{ toYaml . | indent 4 }}
-{{- end }}
-  {{- end }}
-  ports:
-{{- if .Values.properties.clusterSecure }}
-    - port: {{ .Values.service.httpsPort }}
-      name: https
-      targetPort: {{ .Values.httpsPort }}
-{{- else }}
-    - port: {{ .Values.service.httpPort }}
-      name: http
-      targetPort: {{ .Values.properties.httpPort }}
-{{- end }}
-{{- if .Values.service.processors.enabled }}
-{{- with .Values.service.processors.ports  }}
-{{- range . }}
-    - port: {{ .port }}
-      name: {{ .name }}
-      targetPort: {{ .targetPort }}
-      {{- if eq $.Values.service.type "NodePort" }}
-      nodePort: {{ .nodePort }}
-      {{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-  selector:
-    app: {{ template "apache-nifi.name" . }}
-    release: {{ .Release.Name }}
-{{- if .Values.auth.tls.enabled }}

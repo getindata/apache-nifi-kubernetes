@@ -1,0 +1,547 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "apache-nifi.fullname" . }}
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    checksum/krb5: {{ include (print $.Template.BasePath "/krb5-configmap.yaml") . | sha256sum }}
+  labels:
+    app: {{ include "apache-nifi.name" . | quote }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+spec:
+  podManagementPolicy: {{ .Values.sts.podManagementPolicy }}
+  serviceName: {{ template "apache-nifi.fullname" . }}-headless
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "apache-nifi.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+{{- if .Values.sts.pod.annotations }}
+      annotations:
+{{ toYaml .Values.sts.pod.annotations | indent 8 }}
+{{- else }}
+        releaseTime: {{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}
+        security.alpha.kubernetes.io/sysctls: net.ipv4.ip_local_port_range=10000 65000
+{{- end }}
+      labels:
+        app: {{ include "apache-nifi.name" . | quote }}
+        chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+        release: {{ .Release.Name | quote }}
+        heritage: {{ .Release.Service | quote }}
+    spec:
+      {{- if eq .Values.sts.AntiAffinity "hard"}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - {{ include "apache-nifi.name" . | quote }}
+              topologyKey: "kubernetes.io/hostname"
+      {{- else if eq .Values.sts.AntiAffinity "soft"}}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+             - weight: 1
+               podAffinityTerm:
+                 labelSelector:
+                    matchExpressions:
+                      - key: "component"
+                        operator: In
+                        values:
+                         - {{ include "apache-nifi.name" . | quote }}
+                 topologyKey: "kubernetes.io/hostname"
+      {{- end}}
+{{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+{{- end }}
+{{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+{{- end }}
+{{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.securityContext }}
+      securityContext:
+{{ toYaml .Values.securityContext | indent 8 }}
+{{- end }}
+
+{{- range $key, $value := .Values.initContainers }}
+      - name: {{ $key }}
+{{ toYaml $value | indent 8 }}
+{{- end }}
+      {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.image.pullSecret }}
+      {{- end }}
+      containers:
+      - name: server
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        env:
+        {{- if .Values.customEnv }}
+{{ toYaml .Values.customEnv | trim | indent 12 }}
+        {{- end }}
+        command:
+        - bash
+        - -ce
+        - |
+          prop_replace () {
+            target_file=${NIFI_HOME}/conf/${3:-nifi.properties}
+            echo "updating ${1} in ${target_file}"
+            if egrep "^${1}=" ${target_file} &> /dev/null; then
+              sed -i -e "s|^$1=.*$|$1=$2|"  ${target_file}
+            else
+              echo ${1}=${2} >> ${target_file}
+            fi
+          }
+
+          FQDN=$(hostname -f)
+          instance_count={{.Values.replicaCount}}
+
+          # Ranger settings
+          mkdir ${NIFI_HOME}/policycache
+
+          NIFI_PROPS=/opt/nifi/nifi-current/conf/nifi.properties
+          NIFI_AUTHZ_FILE=/opt/nifi/nifi-current/conf/authorizers.xml
+          NIFI_LOGIN_ID=/opt/nifi/nifi-current/conf/login-identity-providers.xml
+          NIFI_KEY_STORE=/opt/nifi/nifi-current/conf/keystore.jks
+          NIFI_KEY_STORE_TYPE=jks
+          NIFI_KEY_STORE_PASSWORD=$KEY_STORE_PASSWD
+          NIFI_KEY_PASSWORD=$KEY_PASSWD
+          NIFI_TRUST_STORE=/opt/nifi/nifi-current/conf/truststore.jks
+          NIFI_TRUST_STORE_TYPE=jks
+          NIFI_TRUST_STORE_PASSWORD=$TRUST_STORE_PASSWD
+          NIFI_INITIAL_ADMIN_IDENTITY=albert.lewandowski
+
+          # Move the truststore and keystore in the conf directory
+          mv ./keystore.jks conf/
+          mv ./truststore.jks conf/
+
+          cp ${NIFI_LOGIN_ID} /opt/nifi/nifi-current/conf/new-login-identity-providers.xml
+          sed -i -e 's|<property name="TLS - Keystore Password"></property>|<property name="TLS - Keystore Password">'"${NIFI_KEY_STORE_PASSWORD}"'</property>|'                       /opt/nifi/nifi-current/conf/new-login-identity-providers.xml
+          sed -i -e 's|<property name="TLS - Truststore Password"></property>|<property name="TLS - Truststore Password">'"${NIFI_TRUST_STORE_PASSWORD}"'</property>|'                 /opt/nifi/nifi-current/conf/new-login-identity-providers.xml                                                                                                                      /opt/nifi/nifi-current/conf/new-login-identity-providers.xml
+
+          cat "${NIFI_HOME}/conf/nifi.temp" > "${NIFI_HOME}/conf/nifi.properties"
+
+          cat "${NIFI_HOME}/conf/authorizers.temp" > "${NIFI_HOME}/conf/authorizers.xml"
+
+          if ! test -f /opt/nifi/data/flow.xml.gz && test -f /opt/nifi/data/flow.xml; then
+            gzip /opt/nifi/data/flow.xml
+          fi
+          prop_replace nifi.remote.input.host ${FQDN}
+          prop_replace nifi.web.http.host ${FQDN}
+
+{{- if .Values.properties.safetyValve }}
+  {{- range $prop, $val := .Values.properties.safetyValve }}
+          prop_replace {{ $prop }} "{{ $val }}" nifi.properties
+  {{- end }}
+{{- end }}
+  {{- if .Values.auth.tls.enabled }}
+          prop_replace nifi.security.keystore                 ${NIFI_KEY_STORE}
+          prop_replace nifi.security.keystoreType             ${NIFI_KEY_STORE_TYPE}
+          prop_replace nifi.security.keystorePasswd           ${NIFI_KEY_STORE_PASSWORD}
+          prop_replace nifi.security.keyPasswd                ${NIFI_KEY_PASSWORD}
+          prop_replace nifi.security.truststore               ${NIFI_TRUST_STORE}
+          prop_replace nifi.security.truststoreType           ${NIFI_TRUST_STORE_TYPE}
+          prop_replace nifi.security.truststorePasswd         ${NIFI_TRUST_STORE_PASSWORD}
+
+          # Set initial admin identity
+          sed -i -e 's|<property name="Initial User Identity 1"></property>|<property name="Initial User Identity 0">'"${NIFI_INITIAL_ADMIN_IDENTITY}"'</property>|'                   ${NIFI_AUTHZ_FILE}
+          sed -i -e 's|<property name="Initial Admin Identity"></property>|<property name="Initial Admin Identity">'"${NIFI_INITIAL_ADMIN_IDENTITY}"'</property>|'                     ${NIFI_AUTHZ_FILE}
+
+          # Set up TLS
+          sed -i -e 's|<property name="TLS - Keystore Password"></property>|<property name="TLS - Keystore Password">'"${NIFI_KEY_STORE_PASSWORD}"'</property>|'                       ${NIFI_AUTHZ_FILE}
+          sed -i -e 's|<property name="TLS - Truststore Password"></property>|<property name="TLS - Truststore Password">'"${NIFI_TRUST_STORE_PASSWORD}"'</property>|'                 ${NIFI_AUTHZ_FILE}
+
+          # Set up the LDAP password
+
+          # Set initial node identities. A separate node identity will be set for each Node in the cluster (specified by the instance_count variable)
+          sed -i -e 's|<property name="Node Identity 1"></property>|<property name="Node Identity 1">'"CN=nifi-0.nifi-hs.nifi.svc.cluster.local, OU=NIFI"'</property>|'                              ${NIFI_AUTHZ_FILE}
+          for i in $(seq 2 ${instance_count}); do
+            sed -i -e '/<property name="Node Identity 1">.*/a <property name="Node Identity '"$i"'">'"CN=nifi-$((i-1)).nifi-hs.nifi.svc.cluster.local, OU=NIFI"'</property>'                             ${NIFI_AUTHZ_FILE}
+          done
+
+  {{- end }}
+          exec bin/nifi.sh run & nifi_pid="$!"
+
+          function offloadNode() {
+              FQDN=$(hostname -f)
+              echo disconnecting node '$FQDN'
+              {{- if .Values.properties.clusterSecure }}
+              servicePort={{ .Values.service.httpsPort }}
+              {{- else }}
+              servicePort={{ .Values.service.httpPort }}
+              {{- end }}
+              baseUrl=http://{{ template "apache-nifi.fullname" . }}:${servicePort}
+              echo baseUrl ${baseUrl}
+              echo "gracefully disconnecting node '$FQDN' from cluster"
+              ${NIFI_TOOLKIT_HOME}/bin/cli.sh nifi get-nodes -ot json -u ${baseUrl} > nodes.json
+              nnid=$(jq --arg FQDN "$FQDN" '.cluster.nodes[] | select(.address==$FQDN) | .nodeId' nodes.json)
+              echo "disconnecting node ${nnid}"
+              ${NIFI_TOOLKIT_HOME}/bin/cli.sh nifi disconnect-node -nnid $nnid -u ${baseUrl}
+              echo ""
+              echo "wait until node has state 'DISCONNECTED'"
+              while [[ "$node_state" != "DISCONNECTED" ]]; do
+                  sleep 1
+                  ${NIFI_TOOLKIT_HOME}/bin/cli.sh nifi get-nodes -ot json -u ${baseUrl} > nodes.json
+                  node_state=$(jq -ranger-nifi-registry-security-configmap.yaml --arg FQDN "$FQDN" '.cluster.nodes[] | select(.address==$FQDN) | .status' nodes.json)
+                  echo "state is '$node_state'"
+              done
+              echo ""
+              echo "node '${nnid}' was disconnected"
+              echo "offloading node"
+              ${NIFI_TOOLKIT_HOME}/bin/cli.sh nifi offload-node -nnid $nnid -u ${baseUrl}
+              echo ""
+              echo "wait until node has state 'OFFLOADED'"
+              while [[ "$node_state" != "OFFLOADED" ]]; do
+                  sleep 1
+                  ${NIFI_TOOLKIT_HOME}/bin/cli.sh nifi get-nodes -ot json -u ${baseUrl} > nodes.json
+                  node_state=$(jq -ranger-nifi-registry-security-configmap.yaml --arg FQDN "$FQDN" '.cluster.nodes[] | select(.address==$FQDN) | .status' nodes.json)
+                  echo "state is '$node_state'"
+              done
+          }
+
+          deleteNode() {
+              echo "deleting node"
+              ${NIFI_TOOLKIT_HOME}/bin/cli.sh nifi delete-node -nnid ${nnid} -u ${baseUrl}
+              echo "node deleted"
+          }
+
+          trap 'echo Received trapped signal, beginning shutdown...;offloadNode;./bin/nifi.sh stop;deleteNode;exit 0;' TERM HUP INT;
+          trap ":" EXIT
+
+          echo NiFi running with PID ${nifi_pid}.
+          wait ${nifi_pid}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        ports:
+{{- if .Values.properties.httpsPort }}
+        - containerPort: {{ .Values.properties.httpsPort }}
+{{- if .Values.sts.hostPort }}
+          hostPort: {{ .Values.sts.hostPort }}
+{{- end }}
+          name: https
+          protocol: TCP
+{{- end }}
+{{- if .Values.properties.httpPort }}
+        - containerPort: {{ .Values.properties.httpPort }}
+          name: http
+          protocol: TCP
+{{- end }}
+        - containerPort: {{ .Values.properties.clusterPort }}
+          name: cluster
+          protocol: TCP
+        - containerPort: {{ .Values.properties.metricsPort }}
+          name: metrics
+          protocol: TCP
+{{- if .Values.env }}
+{{ toYaml .Values.env | indent 8 }}
+{{- end }}
+{{- if .Values.postStart }}
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", {{ .Values.postStart | quote }}]
+{{- end }}
+{{- if .Values.properties.isNode }}
+        readinessProbe:
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          exec:
+            command:
+            - bash
+            - -c
+            - |
+{{- if .Values.properties.httpsPort }}
+              curl -kv \
+                --cert ${NIFI_BASE_DIR}/data/cert/admin/crt.pem --cert-type PEM \
+                --key ${NIFI_BASE_DIR}/data/cert/admin/key.pem --key-type PEM \
+                https://$(hostname -f):8443/nifi-api/controller/cluster > $NIFI_BASE_DIR/data/cluster.state
+{{- else }}
+              curl -kv \
+                http://$(hostname -f):{{ .Values.properties.httpPort }}/nifi-api/controller/cluster > $NIFI_BASE_DIR/data/cluster.state
+{{- end }}
+              STATUS=$(jq -ranger-nifi-registry-security-configmap.yaml ".cluster.nodes[] | select((.address==\"$(hostname -f)\") or .address==\"localhost\") | .status" $NIFI_BASE_DIR/data/cluster.state)
+
+              if [[ ! $STATUS = "CONNECTED" ]]; then
+                echo "Node not found with CONNECTED state. Full cluster state:"
+                jq . $NIFI_BASE_DIR/data/cluster.state
+                exit 1
+              fi
+{{- end }}
+        livenessProbe:
+          initialDelaySeconds: 90
+          periodSeconds: 60
+          tcpSocket:
+{{- if .Values.properties.httpsPort }}
+            port: {{ .Values.properties.httpsPort }}
+{{- else }}
+            port: {{ .Values.properties.httpPort }}
+{{- end }}
+        volumeMounts:
+          - name: "data"
+            mountPath: /opt/nifi/data
+          - name: "flowfile-repository"
+            mountPath: /opt/nifi/flowfile_repository
+          - name: "content-repository"
+            mountPath: /opt/nifi/content_repository
+          - name: "provenance-repository"
+            mountPath: /opt/nifi/provenance_repository
+          - name: "nifi-extensions"
+            mountPath: /opt/nifi/nifi-current/extensions
+          - name: {{ .Release.Name }}-keytab
+            mountPath: /etc/security/keytabs/{{ .Release.Name }}.service.keytab
+            subPath: {{ .Release.Name }}.service.keytab
+          - name: "logs"
+            mountPath: /opt/nifi/nifi-current/logs
+          - name: "bootstrap-conf"
+            mountPath: /opt/nifi/nifi-current/conf/bootstrap.conf
+            subPath: "bootstrap.conf"
+          - name: "nifi-properties"
+            mountPath: /opt/nifi/nifi-current/conf/nifi.temp
+            subPath: "nifi.temp"
+          - name: "authorizers-temp"
+            mountPath: /opt/nifi/nifi-current/conf/authorizers.temp
+            subPath: "authorizers.temp"
+          - name: "krb5-conf"
+            mountPath: /etc/krb5.conf
+            subPath: "krb5.conf"
+          - name: krb5-temp
+            mountPath: /etc/krb5.conf.d
+          - name: jdk-link
+            mountPath: /usr/jdk64
+          - name: "bootstrap-notification-services-xml"
+            mountPath: /opt/nifi/nifi-current/conf/bootstrap-notification-services.xml
+            subPath: "bootstrap-notification-services.xml"
+          - name: "logback-xml"
+            mountPath: /opt/nifi/nifi-current/conf/logback.xml
+            subPath: "logback.xml"
+          - name: "login-identity-providers-xml"
+            mountPath: /opt/nifi/nifi-current/conf/login-identity-providers.xml
+            subPath: "login-identity-providers.xml"
+          - name: "state-management-xml"
+            mountPath: /opt/nifi/nifi-current/conf/state-management.xml
+            subPath: "state-management.xml"
+          - name: "ranger-nifi-audit-xml"
+            mountPath: /opt/nifi/nifi-current/conf/ranger-nifi-audit.xml
+            subPath: "ranger-nifi-audit.xml"
+          - name: "ranger-nifi-security-xml"
+            mountPath: /opt/nifi/nifi-current/conf/ranger-nifi-security.xml
+            subPath: "ranger-nifi-security.xml"
+          {{- range $secret := .Values.secrets }}
+            {{- if $secret.mountPath }}
+              {{- if $secret.keys }}
+                {{- range $key := $secret.keys }}
+          - name: {{ include "apache-nifi.fullname" $ }}-{{ $secret.name }}
+            mountPath: {{ $secret.mountPath }}/{{ $key }}
+            subPath: {{ $key }}
+            readOnly: true
+                {{- end }}
+              {{- else }}
+          - name: {{ include "apache-nifi.fullname" $ }}-{{ $secret.name }}
+            mountPath: {{ $secret.mountPath }}
+            readOnly: true
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- range $configmap := .Values.configmaps }}
+            {{- if $configmap.mountPath }}
+              {{- if $configmap.keys }}
+                {{- range $key := $configmap.keys }}
+          - name: {{ include "apache-nifi.fullname" $ }}-{{ $configmap.name }}
+            mountPath: {{ $configmap.mountPath }}/{{ $key }}
+            subPath: {{ $key }}
+            readOnly: true
+                {{- end }}
+              {{- else }}
+          - name: {{ include "apache-nifi.fullname" $ }}-{{ $configmap.name }}
+            mountPath: {{ $configmap.mountPath }}
+            readOnly: true
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.extraVolumeMounts }}
+{{ toYaml .Values.extraVolumeMounts | indent 10 }}
+          {{- end }}
+      - name: app-log
+        image: "{{ .Values.sidecar.image }}:{{ .Values.sidecar.tag }}"
+        args: [tail, -n+1, -F, /var/log/nifi-app.log]
+        resources:
+{{ toYaml .Values.logresources | indent 10 }}
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log
+      - name: bootstrap-log
+        image: "{{ .Values.sidecar.image }}:{{ .Values.sidecar.tag }}"
+        args: [tail, -n+1, -F, /var/log/nifi-bootstrap.log]
+        resources:
+{{ toYaml .Values.logresources | indent 10 }}
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log
+      - name: user-log
+        image: "{{ .Values.sidecar.image }}:{{ .Values.sidecar.tag }}"
+        args: [tail, -n+1, -F, /var/log/nifi-user.log]
+        resources:
+{{ toYaml .Values.logresources | indent 10 }}
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log
+  {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.image.pullSecret }}
+  {{- end }}
+      volumes:
+      - name: "bootstrap-conf"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "bootstrap.conf"
+              path: "bootstrap.conf"
+      - name: "nifi-properties"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "nifi.properties"
+              path: "nifi.temp"
+      - name: "authorizers-temp"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "authorizers.xml"
+              path: "authorizers.temp"
+      - name: "bootstrap-notification-services-xml"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "bootstrap-notification-services.xml"
+              path: "bootstrap-notification-services.xml"
+      - name: "logback-xml"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "logback.xml"
+              path: "logback.xml"
+      - name: "login-identity-providers-xml"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "login-identity-providers.xml"
+              path: "login-identity-providers.xml"
+      - name: "state-management-xml"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "state-management.xml"
+              path: "state-management.xml"
+      - name: "krb5-conf"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-krb5
+          items:
+            - key: "krb5.conf"
+              path: "krb5.conf"
+      - name: {{ .Release.Name }}-keytab
+        secret:
+          secretName: {{ .Release.Name }}-keytab
+  {{- if .Values.ranger.enabled }}
+      - name: "ranger-nifi-audit-xml"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "ranger-nifi-audit.xml"
+              path: "ranger-nifi-audit.xml"
+      - name: "ranger-nifi-security-xml"
+        configMap:
+          name: {{ template "apache-nifi.fullname" . }}-config
+          items:
+            - key: "ranger-nifi-security.xml"
+              path: "ranger-nifi-security.xml"
+  {{- end }}
+      {{- range .Values.secrets }}
+      - name: {{ include "apache-nifi.fullname" $ }}-{{ .name }}
+        secret:
+          secretName: {{ .name }}
+      {{- end }}
+      {{- range .Values.configmaps }}
+      - name: {{ include "apache-nifi.fullname" $ }}-{{ .name }}
+        configMap:
+          name: {{ .name }}
+      {{- end }}
+{{- if not .Values.persistence.enabled }}
+      - name: logs
+        emptyDir: {}
+      - name: krb5-temp
+        emptyDir: {}
+      - name: jdk-link
+        emptyDir: {}
+{{- end }}
+{{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumes | indent 6 }}
+{{- end }}
+{{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+        {{- range .Values.persistence.accessModes }}
+          - {{ . | quote }}
+        {{- end }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.dataStorage.size }}
+    - metadata:
+        name: flowfile-repository
+      spec:
+        accessModes:
+        {{- range .Values.persistence.accessModes }}
+          - {{ . | quote }}
+        {{- end }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.flowfileRepoStorage.size }}
+    - metadata:
+        name: content-repository
+      spec:
+        accessModes:
+        {{- range .Values.persistence.accessModes }}
+          - {{ . | quote }}
+        {{- end }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.contentRepoStorage.size }}
+    - metadata:
+        name: provenance-repository
+      spec:
+        accessModes:
+        {{- range .Values.persistence.accessModes }}
+          - {{ . | quote }}
+        {{- end }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.provenanceRepoStorage.size }}
+    - metadata:
+        name: logs
+      spec:
+        accessModes:
+        {{- range .Values.persistence.accessModes }}
+          - {{ . | quote }}
+        {{- end }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.logStorage.size }}
+{{- end }}

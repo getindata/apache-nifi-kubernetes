@@ -17,16 +17,16 @@ spec:
     app: {{ template "nifireg.fullname" . }}
     release: {{ .Release.Name }}
   type: {{ .Values.headless.type }}
-  loadBalancerIP: {{ .Values.headless.ip }}
+  # It can be useful for setting up IP if we already have created Load Balancer
+  # loadBalancerIP: {{ .Values.headless.ip }}
   ports:
   {{- if .Values.config.security.https.enabled }}
     - name: {{ .Values.portName | default "https" }}
       protocol: TCP
-      port: 18443
-      targetPort: {{ .Values.portNumber | default "18443" }}
+      targetPort: {{ .Values.config.ports.https }}
   {{- else }}
     - name: {{ .Values.portName | default "http" }}
       protocol: TCP
-      port: 18080
+      port: {{ .Values.config.ports.http }}
       targetPort: {{ .Values.portNumber | default "18080" }}
   {{- end }}

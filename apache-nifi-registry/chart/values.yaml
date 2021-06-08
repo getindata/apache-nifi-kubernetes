@@ -17,9 +17,13 @@ securityContext:
 # headless service
 headless:
   type: LoadBalancer
-  ip: 127.0.0.1
+  # It can be useful for setting up IP if we already have created Load Balancer
+  # ip: 127.0.0.1
   annotations:
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+
+sts:
+  podManagementPolicy: Parallel
 
 resources:
   requests:
@@ -37,7 +41,6 @@ kerberos:
   enabled: true
 
 config:
-  f5DnsCert: nifi-registry.getindata.com
   security:
     https:
       enabled: true
@@ -60,7 +63,7 @@ config:
 
 auth:
   ldap:
-    enabled: true
+    enabled: false
     managerDn: cn=ad,ou=users,dc=getindata,dc=com
     host: ldaps://getindata.com:636
     password: ldappasswordtoreplace
@@ -86,6 +89,19 @@ flow_persistence:
   mode: "git"
   git:
     remote: origin
+
+## Configure Ingress based on the documentation here: https://kubernetes.io/docs/concepts/services-networking/ingress/
+## It requires support of SSL Passthrough from the Ingress side
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    ingress.kubernetes.io/ssl-redirect: "true"
+    virtual-server.f5.com/ip: "127.0.0.1"
+  tls:
+    secret: nifireg-getindata-tls-secret
+  hosts: nifireg.getindata.com
+  path: /
 
 extraVolumes:
   - name: nifi-registry-authorizers
@@ -129,7 +145,7 @@ extraVolumes:
           path: truststore.jks
 
 extraVolumeMounts:
-  - name: nifi-registry-authorizers
+  - name: nifi-registry-configs
     mountPath: /opt/nifi-registry/nifi-registry-current/conf/authorizers.xml
     subPath: nifi-registry.properties
   - name: nifi-registry-bootstrap

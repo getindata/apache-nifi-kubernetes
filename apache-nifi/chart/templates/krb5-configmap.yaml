@@ -10,9 +10,6 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   krb5.conf: |+
-    includedir /etc/krb5.conf.d/
-    includedir /var/lib/sss/pubconf/krb5.include.d/
-
     [libdefaults]
       renew_lifetime = 7d
       forwardable = true

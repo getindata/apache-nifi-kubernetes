@@ -1,0 +1,31 @@
+---
+  {{- if .Values.ingress.enabled -}}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ template "apache-nifi.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "apache-nifi.name" . | quote }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.tls }}
+tls:
+  - hosts:
+      - {{ .Values.properties.f5DnsCert }}
+    secretName: {{ .Values.ingress.tls.secret }}
+  {{- end }}
+rules:
+  - host: {{ .Values.properties.f5DnsCert }}
+    http:
+      paths:
+        - path: /
+          backend:
+            serviceName: {{ template "apache-nifi.fullname" . }}-headless
+            servicePort: {{ .Values.properties.httpsPort }}
+  {{- end }}

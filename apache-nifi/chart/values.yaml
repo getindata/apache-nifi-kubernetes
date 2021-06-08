@@ -24,14 +24,12 @@ sts:
       security.alpha.kubernetes.io/sysctls: net.ipv4.ip_local_port_range=10000 65000
 
 properties:
-  # Add external IP
-  f5Dns: "nificdc.getindata.com:8443"
-  f5DnsCert: "nificdc.getindata.com"
   # use externalSecure for when inbound SSL is provided by nginx-ingress or other external mechanism
   externalSecure: false
   isNode: true
   httpPort: 8080
   httpsPort: 8443
+  metricsPort: 9092
   nodePort: 31889
   clusterPort: 6007
   clusterSecure: true
@@ -40,7 +38,7 @@ properties:
   siteToSite:
     secure: false
     port: 10000
-  authorizer: ranger-provider
+  authorizer: file-provider
   # use properties.safetyValve to pass explicit 'key: value' pairs that overwrite other configuration
   safetyValve:
     #nifi.variable.registry.properties: "${NIFI_HOME}/example1.properties, ${NIFI_HOME}/example2.properties"
@@ -51,11 +49,12 @@ properties:
 # Nifi User Authentication
 auth:
   ldap:
-    enabled: true
+    enabled: false
     managerDn: ""
     host: ""
     password: ""
     # initialAdminIdentity:
+    strategy: "LDAPS"
     searchBaseUsers: dc=getindata,dc=com,dc=pl
     searchBaseGroup: dc=getindata,dc=com,dc=pl
     searchFilterUsers: (sAMAccountName={0})
@@ -70,7 +69,8 @@ auth:
 # headless service
 headless:
   type: LoadBalancer
-  ip: 127.0.0.1
+  # It can be useful for setting up IP if we already have created Load Balancer
+  # ip: 127.0.0.1
   annotations:
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 
@@ -86,19 +86,6 @@ service:
     ##
     loadBalancerSourceRanges:
       - 10.10.10.0/24
-
-  # Enables additional port/ports to nifi service for internal processors
-  processors:
-    enabled: false
-    ports:
-      - name: processor01
-        port: 7001
-        targetPort: 7001
-        #nodePort: 30701
-      - name: processor02
-        port: 7002
-        targetPort: 7002
-        #nodePort: 30702
 
 ## Configure Ingress based on the documentation here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ## It requires support of SSL Passthrough from the Ingress side
@@ -120,12 +107,35 @@ jvmMemory: 2g
 # Separate image for tailing each log separately
 sidecar:
   image: ez123/alpine-tini
-  tag: latest
+  tag: 3.7
 
 # Busybox image
 busybox:
   image: busybox
-  tag: latest
+  tag: 1.33.1
+
+customEnv:
+  - name: TZ
+    value: Europe/Warsaw
+  - name: JAVA_HOME
+    value: /usr/local/openjdk-8
+## Example envs for HDFS
+#  - name: HADOOP_COMMON_LIB_NATIVE_DIR
+#    value: $HADOOP_HOME/lib/native
+#  - name: HADOOP_HOME
+#    value: /usr/hdp/3.1.0.0-78/hadoop-hdfs
+#  - name: HADOOP_INSTALL
+#    value: $HADOOP_HOME
+#  - name: HADOOP_HDFS_HOME
+#    value: $HADOOP_HOME/share/hadoop/common/
+#  - name: HADOOP_CLASSPATH
+#    value: /usr/hdp/3.1.0.0-78/hadoop-hdfs/lib
+#  - name: HADOOP_MAPRED_HOME
+#    value: /usr/hdp/3.1.0.0-78/hadoop-mapreduce
+#  - name: HADOOP_LIBEXEC_DIR
+#    value: /usr/hdp/3.1.0.0-78/hadoop-hdfs/libexec
+#  - name: HADOOP_COMMON_LIB_NATIVE_DIR
+#    value: ${HADOOP_PREFIX}/lib/native
 
 ## Enable persistence using Persistent Volume Claims
 ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
@@ -148,16 +158,16 @@ persistence:
   ## Storage Capacities for persistent volumes
   # Storage capacity for the 'data' directory, which is used to hold things such as the flow.xml.gz, configuration, state, etc.
   dataStorage:
-    size: 1Gi
+    size: 15Gi
   # Storage capacity for the FlowFile repository
   flowfileRepoStorage:
     size: 20Gi
   # Storage capacity for the Content repository
   contentRepoStorage:
-    size: 10Gi
+    size: 20Gi
   # Storage capacity for the Provenance repository. When changing this, one should also change the properties.provenanceStorage value above, also.
   provenanceRepoStorage:
-    size: 10Gi
+    size: 20Gi
   # Storage capacity for nifi logs
   logStorage:
     size: 10Gi
