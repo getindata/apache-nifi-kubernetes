@@ -1,0 +1,591 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "apache-nifi.fullname" . }}-config
+  labels:
+    app: {{ include "apache-nifi.name" . | quote }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  authorizers.xml: |+
+    {{- $replicas := int .Values.replicaCount }}
+    {{- $chart := .Chart.Name }}
+    {{- $release := .Release.Name }}
+    {{- $namespace := .Release.Namespace }}
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <authorizers>
+         {{- if .Values.auth.ldap.enabled }}
+        <userGroupProvider>
+            <identifier>ldap-user-group-provider</identifier>
+            <class>org.apache.nifi.ldap.tenants.LdapUserGroupProvider</class>
+            <property name="Authentication Strategy">{{.Values.auth.ldap.strategy}}</property>
+            <property name="Manager DN">{{.Values.auth.ldap.managerDn}}</property>
+            <property name="Manager Password">{{.Values.auth.ldap.password}}</property>
+            <property name="TLS - Keystore">/opt/nifi/nifi-current/conf/keystore.jks</property>
+            <property name="TLS - Keystore Password"></property>
+            <property name="TLS - Keystore Type">JKS</property>
+            <property name="TLS - Truststore">/opt/nifi/nifi-current/conf/truststore.jks</property>
+            <property name="TLS - Truststore Password"></property>
+            <property name="TLS - Truststore Type">JKS</property>
+            <property name="TLS - Client Auth">WANT</property>
+            <property name="TLS - Protocol">TLS</property>
+            <property name="TLS - Shutdown Gracefully"></property>
+            <property name="Referral Strategy">FOLLOW</property>
+            <property name="Connect Timeout">10 secs</property>
+            <property name="Read Timeout">10 secs</property>
+            <property name="Url">{{.Values.auth.ldap.host}}</property>
+            <property name="Page Size"></property>
+            <property name="Sync Interval">30 mins</property>
+            <property name="User Search Base">{{.Values.auth.ldap.searchBaseUsers}}</property>
+            <property name="User Search Filter">{{.Values.auth.ldap.searchFilterUsers}}</property>
+            <property name="User Object Class">person</property>
+            <property name="User Search Scope">ONE_LEVEL</property>
+            <property name="User Identity Attribute"></property>
+            <property name="User Group Name Attribute"></property>
+            <property name="User Group Name Attribute - Referenced Group Attribute"></property>
+            <property name="Group Search Base">{{.Values.auth.ldap.searchBaseGroup}}</property>
+            <property name="Group Object Class">group</property>
+            <property name="Group Search Scope">ONE_LEVEL</property>
+            <property name="Group Search Filter"></property>
+            <property name="Group Name Attribute">cn</property>
+            <property name="Group Member Attribute">member</property>
+            <property name="Group Member Attribute - Referenced User Attribute"></property>
+        </userGroupProvider>
+        {{- end }}
+        {{- if .Values.ranger.enabled}}
+        <authorizer>
+            <identifier>ranger-provider</identifier>
+            <class>org.apache.nifi.ranger.authorization.RangerNiFiAuthorizer</class>
+            <property name="Ranger Audit Config Path">/opt/nifi/nifi-current/conf/ranger-nifi-audit.xml</property>
+            <property name="Ranger Security Config Path">/opt/nifi/nifi-current/conf/ranger-nifi-security.xml</property>
+            <property name="Ranger Service Type">nifi</property>
+            <property name="Ranger Application Id">{{.Values.ranger.serviceName}}</property>
+            <property name="Ranger Admin Identity">CN=ranger, OU=NIFI</property>
+            <property name="Ranger Kerberos Enabled">false</property>
+            <property name="User Group Provider">ldap-user-group-provider</property>
+        </authorizer>
+        {{- else }}
+        <authorizer>
+            <identifier>managed-authorizer</identifier>
+            <class>org.apache.nifi.authorization.StandardManagedAuthorizer</class>
+            <property name="Access Policy Provider">file-access-policy-provider</property>
+        </authorizer>
+        {{- end }}
+    </authorizers>
+
+  bootstrap-notification-services.xml: |+
+    <?xml version="1.0"?>
+    <services>
+    <!--
+         <service>
+            <id>email-notification</id>
+            <class>org.apache.nifi.bootstrap.notification.email.EmailNotificationService</class>
+            <property name="SMTP Hostname"></property>
+            <property name="SMTP Port"></property>
+            <property name="SMTP Username"></property>
+            <property name="SMTP Password"></property>
+            <property name="SMTP TLS"></property>
+            <property name="From"></property>
+            <property name="To"></property>
+         </service>
+    -->
+    <!--
+         <service>
+            <id>http-notification</id>
+            <class>org.apache.nifi.bootstrap.notification.http.HttpNotificationService</class>
+            <property name="URL"></property>
+         </service>
+    -->
+    </services>
+  bootstrap.conf: |+
+    java=java
+    run.as=nifi
+    lib.dir=./lib
+    conf.dir=./conf
+    graceful.shutdown.seconds=20
+    java.arg.1=-Dorg.apache.jasper.compiler.disablejsr199=true
+    # JVM memory settings
+    java.arg.2=-Xms{{ .Values.jvmMemory }}
+    java.arg.3=-Xmx{{ .Values.jvmMemory }}
+    # Enable Remote Debugging
+    #java.arg.debug=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=8000
+    java.arg.4=-Djava.net.preferIPv4Stack=true
+    # allowRestrictedHeaders is required for Cluster/Node communications to work properly
+    java.arg.5=-Dsun.net.http.allowRestrictedHeaders=true
+    java.arg.6=-Djava.protocol.handler.pkgs=sun.net.www.protocol
+    #java.arg.13=-XX:+UseG1GC
+    #Set headless mode by default
+    java.arg.14=-Djava.awt.headless=true
+
+    # aster key in hexadecimal format for encrypted sensitive configuration values
+    nifi.bootstrap.sensitive.key=0123456789ABCDEFFEDCBA98765432100123456789ABCDEFFEDCBA9876543210
+    # Sets the provider of SecureRandom to /dev/urandom to prevent blocking on VMs
+    java.arg.15=-Djava.security.egd=file:/dev/urandom
+    ###
+    # Notification Services for notifying interested parties when NiFi is stopped, started, dies
+    ###
+    # XML File that contains the definitions of the notification services
+    notification.services.file=./conf/bootstrap-notification-services.xml
+    notification.max.attempts=5
+
+  logback.xml: |+
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration scan="true" scanPeriod="30 seconds">
+        <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+            <resetJUL>true</resetJUL>
+        </contextListener>
+
+        <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${org.apache.nifi.bootstrap.config.log.dir}/nifi-app.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${org.apache.nifi.bootstrap.config.log.dir}/nifi-app_%d{yyyy-MM-dd_HH}.%i.log</fileNamePattern>
+                <maxFileSize>100MB</maxFileSize>
+                <!-- keep 30 log files worth of history -->
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+            <immediateFlush>true</immediateFlush>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <pattern>%date %level [%thread] %logger{40} %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <appender name="USER_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${org.apache.nifi.bootstrap.config.log.dir}/nifi-user.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${org.apache.nifi.bootstrap.config.log.dir}/nifi-user_%d.log</fileNamePattern>
+                <!-- keep 30 log files worth of history -->
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <pattern>%date %level [%thread] %logger{40} %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <appender name="BOOTSTRAP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${org.apache.nifi.bootstrap.config.log.dir}/nifi-bootstrap.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!--
+                  For daily rollover, use 'user_%d.log'.
+                  For hourly rollover, use 'user_%d{yyyy-MM-dd_HH}.log'.
+                  To GZIP rolled files, replace '.log' with '.log.gz'.
+                  To ZIP rolled files, replace '.log' with '.log.zip'.
+                -->
+                <fileNamePattern>${org.apache.nifi.bootstrap.config.log.dir}/nifi-bootstrap_%d.log</fileNamePattern>
+                <!-- keep 5 log files worth of history -->
+                <maxHistory>5</maxHistory>
+            </rollingPolicy>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <pattern>%date %level [%thread] %logger{40} %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <appender name="RANGER_AUDIT" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${org.apache.nifi.bootstrap.config.log.dir}/ranger_nifi_audit.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${org.apache.nifi.bootstrap.config.log.dir}/ranger_nifi_audit_%d{yyyy-MM-dd_HH}.%i.log</fileNamePattern>
+                <maxFileSize>100MB</maxFileSize>
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+            <immediateFlush>true</immediateFlush>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <pattern>%date %level [%thread] %logger{40} %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <logger name="ranger.audit" level="INFO" additivity="false">
+                    <appender-ref ref="RANGER_AUDIT"/>
+        </logger>
+
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <pattern>%date %level [%thread] %logger{40} %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <!-- valid logging levels: TRACE, DEBUG, INFO, WARN, ERROR -->
+
+        <logger name="org.apache.nifi" level="INFO"/>
+        <logger name="org.apache.nifi.processors" level="INFO"/>
+        <logger name="org.apache.nifi.processors.standard.LogAttribute" level="WARN"/>
+        <logger name="org.apache.nifi.processors.standard.LogMessage" level="WARN"/>
+        <logger name="org.apache.nifi.controller.repository.StandardProcessSession" level="INFO" />
+        <logger name="org.apache.calcite.runtime.CalciteException" level="INFO" />
+
+        <logger name="org.apache.curator.framework.recipes.leader.LeaderSelector" level="OFF" />
+        <logger name="org.apache.curator.ConnectionState" level="OFF" />
+        <logger name="org.apache.nifi.cluster" level="INFO"/>
+        <logger name="org.apache.nifi.server.JettyServer" level="WARN"/>
+        <logger name="org.eclipse.jetty" level="INFO"/>
+        <logger name="org.springframework" level="ERROR"/>
+        <logger name="org.glassfish.jersey.internal.Errors" level="ERROR"/>
+        <logger name="org.apache.nifi.web.security" level="INFO" additivity="true">
+            <appender-ref ref="USER_FILE"/>
+        </logger>
+        <logger name="org.apache.nifi.web.api.config" level="WARN" additivity="false">
+            <appender-ref ref="USER_FILE"/>
+        </logger>
+        <logger name="org.apache.nifi.authorization" level="WARN" additivity="false">
+            <appender-ref ref="USER_FILE"/>
+        </logger>
+        <logger name="org.apache.nifi.cluster.authorization" level="INFO" additivity="false">
+            <appender-ref ref="USER_FILE"/>
+        </logger>
+        <logger name="org.apache.nifi.web.filter.RequestLogger" level="INFO" additivity="false">
+            <appender-ref ref="USER_FILE"/>
+        </logger>
+
+
+        <!--
+            Logger for capturing Bootstrap logs and NiFi's standard error and standard out.
+        -->
+        <logger name="org.apache.nifi.bootstrap" level="INFO" additivity="false">
+            <appender-ref ref="BOOTSTRAP_FILE" />
+        </logger>
+        <logger name="org.apache.nifi.bootstrap.Command" level="INFO" additivity="false">
+            <appender-ref ref="CONSOLE" />
+            <appender-ref ref="BOOTSTRAP_FILE" />
+        </logger>
+        <logger name="org.apache.nifi.StdOut" level="INFO" additivity="false">
+            <appender-ref ref="BOOTSTRAP_FILE" />
+        </logger>
+        <logger name="org.apache.nifi.StdErr" level="INFO" additivity="false">
+            <appender-ref ref="BOOTSTRAP_FILE" />
+        </logger>
+        <root level="INFO">
+            <appender-ref ref="APP_FILE"/>
+        </root>
+
+    </configuration>
+  login-identity-providers.xml: |+
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <loginIdentityProviders>
+        <provider>
+            <identifier>ldap-provider</identifier>
+            <class>org.apache.nifi.ldap.LdapProvider</class>
+            <property name="Authentication Strategy">LDAPS</property>
+            <property name="Manager DN">{{.Values.auth.ldap.managerDn}}</property>
+            <property name="Manager Password">{{.Values.auth.ldap.password}}</property>
+            <property name="Url">{{.Values.auth.ldap.host}}</property>
+            <property name="TLS - Keystore">/opt/nifi/nifi-current/conf/keystore.jks</property>
+            <property name="TLS - Keystore Password"></property>
+            <property name="TLS - Keystore Type">JKS</property>
+            <property name="TLS - Truststore">/opt/nifi/nifi-current/conf/truststore.jks</property>
+            <property name="TLS - Truststore Password"></property>
+            <property name="TLS - Truststore Type">JKS</property>
+            <property name="TLS - Client Auth">WANT</property>
+            <property name="TLS - Protocol">TLS</property>
+            <property name="TLS - Shutdown Gracefully"></property>
+
+            <property name="Referral Strategy">FOLLOW</property>
+            <property name="Connect Timeout">10 secs</property>
+            <property name="Read Timeout">10 secs</property>
+            <property name="User Search Base">{{.Values.auth.ldap.searchBaseUsers}}</property>
+            <property name="User Search Filter">{{.Values.auth.ldap.searchFilterUsers}}</property>
+            <property name="Identity Strategy">USE_USERNAME</property>
+            <property name="Group Search Base">{{.Values.auth.ldap.searchBaseGroup}}</property>
+            <property name="Group Object Class">group</property>
+            <property name="Group Search Scope">ONE_LEVEL</property>
+            <property name="Group Search Filter"></property>
+            <property name="Group Name Attribute">cn</property>
+            <property name="Group Member Attribute">member</property>
+            <property name="Group Member Attribute - Referenced User Attribute"></property>
+            <property name="Authentication Expiration">12 hours</property>
+            <property name="Authentication Expiration">12 hours</property>
+        </provider>
+    </loginIdentityProviders>
+  nifi.properties: |-
+    # Core Properties #
+    nifi.flow.configuration.file=../data/flow.xml.gz
+    nifi.flow.configuration.archive.enabled=true
+    nifi.flow.configuration.archive.dir=../data/archive/
+    nifi.flow.configuration.archive.max.time=30 days
+    nifi.flow.configuration.archive.max.storage=500 MB
+    nifi.flow.configuration.archive.max.count=2
+    nifi.flowcontroller.autoResumeState=true
+    nifi.flowcontroller.graceful.shutdown.period=10 sec
+    nifi.flowservice.writedelay.interval=500 ms
+    nifi.administrative.yield.duration=30 sec
+    nifi.bored.yield.duration=10 millis
+
+    nifi.authorizer.configuration.file=./conf/authorizers.xml
+    nifi.login.identity.provider.configuration.file=./conf/new-login-identity-providers.xml
+    nifi.templates.directory=../data/templates
+    nifi.ui.banner.text={{ .Release.Name }}
+    nifi.ui.autorefresh.interval=30 sec
+    nifi.nar.library.directory=./lib
+    nifi.nar.working.directory=./work/nar/
+    nifi.documentation.working.directory=./work/docs/components
+    
+    # Users and groups mapping
+    nifi.security.identity.mapping.pattern.dn=^cn=(.*?) (.*?),ou=(.*?),ou=(.*?),dc=(.*?),dc=(.*?),dc=(.*?)$
+    nifi.security.identity.mapping.value.dn=$1.$2
+    nifi.security.identity.mapping.transform.dn=LOWER
+    
+    nifi.security.group.mapping.pattern.anygroup=^(.*)$
+    nifi.security.group.mapping.value.anygroup=$1
+    nifi.security.group.mapping.transform.anygroup=LOWER
+
+    ####################
+    # State Management #
+    ####################
+    nifi.state.management.configuration.file=./conf/state-management.xml
+    # The ID of the local state provider
+    nifi.state.management.provider.local=local-provider
+
+    # H2 Settings
+    nifi.database.directory=../data/database_repository
+    nifi.h2.url.append=;LOCK_TIMEOUT=25000;WRITE_DELAY=0;AUTO_SERVER=FALSE
+
+    # FlowFile Repository
+    nifi.flowfile.repository.implementation=org.apache.nifi.controller.repository.WriteAheadFlowFileRepository
+    nifi.flowfile.repository.directory=../flowfile_repository
+    nifi.flowfile.repository.partitions=256
+    nifi.flowfile.repository.checkpoint.interval=2 mins
+    nifi.flowfile.repository.always.sync=false
+
+    nifi.swap.manager.implementation=org.apache.nifi.controller.FileSystemSwapManager
+    nifi.queue.swap.threshold=20000
+    nifi.swap.in.period=5 sec
+    nifi.swap.in.threads=1
+    nifi.swap.out.period=5 sec
+    nifi.swap.out.threads=4
+
+    # Content Repository
+    nifi.content.repository.implementation=org.apache.nifi.controller.repository.FileSystemRepository
+    nifi.content.claim.max.appendable.size=1 MB
+    nifi.content.claim.max.flow.files=100
+    nifi.content.repository.directory.default=../content_repository
+    nifi.content.repository.archive.max.retention.period=3 days
+    nifi.content.repository.archive.max.usage.percentage=85%
+    nifi.content.repository.archive.enabled=true
+    nifi.content.repository.always.sync=false
+    nifi.content.viewer.url=/nifi-content-viewer/
+
+    # Provenance Repository Properties
+    nifi.provenance.repository.implementation=org.apache.nifi.provenance.WriteAheadProvenanceRepository
+    nifi.provenance.repository.debug.frequency=1_000_000
+    nifi.provenance.repository.encryption.key.provider.implementation=
+    nifi.provenance.repository.encryption.key.provider.location=
+    nifi.provenance.repository.encryption.key.id=
+    nifi.provenance.repository.encryption.key=
+
+    # Persistent Provenance Repository Properties
+    nifi.provenance.repository.directory.default=../provenance_repository
+    nifi.provenance.repository.max.storage.time=30 days
+    nifi.provenance.repository.max.storage.size={{.Values.properties.provenanceStorage}}
+    nifi.provenance.repository.rollover.time=300 secs
+    nifi.provenance.repository.rollover.size=100 MB
+    nifi.provenance.repository.query.threads=2
+    nifi.provenance.repository.index.threads=2
+    nifi.provenance.repository.compress.on.rollover=true
+    nifi.provenance.repository.always.sync=false
+    nifi.provenance.repository.journal.count=16
+    nifi.provenance.repository.indexed.fields=EventType, FlowFileUUID, Filename, ProcessorID, Relationship
+    nifi.provenance.repository.indexed.attributes=
+    nifi.provenance.repository.index.shard.size=500 MB
+    nifi.provenance.repository.max.attribute.length=65536
+
+    # Volatile Provenance Respository Properties
+    nifi.provenance.repository.buffer.size=100000
+
+    # Component Status Repository
+    nifi.components.status.repository.implementation=org.apache.nifi.controller.status.history.VolatileComponentStatusRepository
+    nifi.components.status.repository.buffer.size=1440
+    nifi.components.status.snapshot.frequency=1 min
+
+    # Site to Site properties
+    nifi.remote.input.host=
+    nifi.remote.input.secure={{.Values.properties.siteToSite.secure}}
+    nifi.remote.input.socket.port={{.Values.properties.siteToSite.port}}
+
+    # web properties #
+    nifi.web.war.directory=./lib
+    nifi.web.proxy.host={{ .Values.properties.f5Dns }}
+
+    {{if .Values.auth.tls.enabled}}
+    nifi.web.https.port={{.Values.properties.httpsPort}}
+    nifi.web.https.host=
+    nifi.web.https.network.interface.default=
+    {{else}}
+    nifi.web.http.host=
+    nifi.web.http.port={{.Values.properties.httpPort}}
+    nifi.web.http.network.interface.default=
+    nifi.remote.input.http.enabled=true
+    nifi.remote.input.http.transaction.ttl=30 sec
+    {{end}}
+
+    nifi.web.jetty.working.directory=./work/jetty
+    nifi.web.jetty.threads=200
+
+    # security properties #
+    nifi.sensitive.props.key=testpasswordnifi
+    nifi.sensitive.props.key.protected=
+    nifi.sensitive.props.algorithm=PBEWITHMD5AND256BITAES-CBC-OPENSSL
+    nifi.sensitive.props.provider=BC
+    nifi.sensitive.props.additional.keys=
+
+    nifi.security.keystore=/opt/nifi/nifi-current/conf/keystore.jks
+    nifi.security.needClientAuth=false
+    nifi.security.keystoreType=jks
+    nifi.security.keystorePasswd=
+    nifi.security.keyPasswd=
+    nifi.security.truststore=/opt/nifi/nifi-current/conf/truststore.jks
+    nifi.security.truststoreType=jks
+    nifi.security.truststorePasswd=
+    nifi.security.needClientAuth={{.Values.properties.needClientAuth}}
+    nifi.security.user.authorizer={{.Values.properties.authorizer}}
+        {{if .Values.auth.ldap.enabled}}
+    nifi.security.user.login.identity.provider=ldap-provider
+        {{else}}
+    nifi.security.user.login.identity.provider=
+        {{end}}
+    nifi.security.ocsp.responder.url=
+    nifi.security.ocsp.responder.certificate=
+
+    # OpenId Connect SSO Properties #
+    nifi.security.user.oidc.discovery.url=
+    nifi.security.user.oidc.connect.timeout=5 secs
+    nifi.security.user.oidc.read.timeout=5 secs
+    nifi.security.user.oidc.client.id=
+    nifi.security.user.oidc.client.secret=
+    nifi.security.user.oidc.preferred.jwsalgorithm=
+
+    # kerberos #
+    nifi.kerberos.krb5.file=/etc/krb5.conf
+
+    # kerberos service principal #
+    nifi.kerberos.service.principal={{.Values.kerberos.principal}}
+    nifi.kerberos.service.keytab.location={{.Values.kerberos.keytab}}
+
+    # kerberos spnego principal #
+    nifi.kerberos.spnego.principal=
+    nifi.kerberos.spnego.keytab.location=
+    nifi.kerberos.spnego.authentication.expiration=12 hours
+
+    # external properties files for variable registry
+    # supports a comma delimited list of file locations
+    nifi.variable.registry.properties=
+  nifi_jaas.conf: |+
+    NiFiClient {
+      com.sun.security.auth.module.Krb5LoginModule required
+      useKeyTab=true
+      keyTab="{{.Values.kerberos.keytab}}"
+      storeKey=true
+      useTicketCache=false
+      principal="{{.Values.kerberos.principal}}";
+    };
+    RegistryClient {
+      com.sun.security.auth.module.Krb5LoginModule required
+      useKeyTab=true
+      keyTab="{{.Values.kerberos.keytab}}"
+      storeKey=true
+      useTicketCache=false
+      principal="{{.Values.kerberos.principal}}";
+    };
+  ranger-nifi-audit.xml: |+
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration xmlns:xi="http://www.w3.org/2001/XInclude">
+        <property>
+            <name>xasecure.audit.destination.hdfs.dir</name>
+            <value>{{.Values.ranger.hdfsAudit}}</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.option.principal</name>
+            <value>{{.Values.kerberos.principal}}</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.option.keyTab</name>
+            <value>{{.Values.kerberos.keytab}}</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.loginModuleName</name>
+            <value>com.sun.security.auth.module.Krb5LoginModule</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.loginModuleControlFlag</name>
+            <value>required</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.option.useKeyTab</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.option.storeKey</name>
+            <value>false</value>
+        </property>
+        <property>
+            <name>xasecure.audit.jaas.Client.option.serviceName</name>
+            <value>solr</value>
+        </property>
+        <property>
+            <name>xasecure.audit.destination.solr.force.use.inmemory.jaas.config</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>xasecure.audit.destination.log4j</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>xasecure.audit.destination.log4j.logger</name>
+            <value>ranger.audit</value>
+        </property>
+    </configuration>
+  ranger-nifi-security.xml: |+
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration xmlns:xi="http://www.w3.org/2001/XInclude">
+        <property>
+            <name>ranger.plugin.nifi.policy.rest.url</name>
+            <value>{{.Values.ranger.admin}}</value>
+            <description>URL to Ranger Admin</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.service.name</name>
+            <value>{{.Values.ranger.serviceName}}</value>
+            <description>Name of the Ranger service containing policies for this nifi instance</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.policy.source.impl</name>
+            <value>org.apache.ranger.admin.client.RangerAdminRESTClient</value>
+            <description>Class to retrieve policies from the source</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.policy.rest.ssl.config.file</name>
+            <value>ranger-policymgr-ssl.xml</value>
+            <description>Path to the file containing SSL details to contact Ranger Admin</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.policy.pollIntervalMs</name>
+            <value>30000</value>
+            <description>How often to poll for changes in policies?</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.policy.cache.dir</name>
+            <value>/opt/nifi/nifi-current/policycache</value>
+            <description>Directory where Ranger policies are cached after successful retrieval from the source</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.policy.rest.client.connection.timeoutMs</name>
+            <value>120000</value>
+            <description>RangerRestClient Connection Timeout in Milli Seconds</description>
+        </property>
+        <property>
+            <name>ranger.plugin.nifi.policy.rest.client.read.timeoutMs</name>
+            <value>30000</value>
+            <description>RangerRestClient read Timeout in Milli Seconds</description>
+        </property>
+    </configuration>
+  state-management.xml: |+
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <stateManagement>
+        <local-provider>
+            <id>local-provider</id>
+            <class>org.apache.nifi.controller.state.providers.local.WriteAheadLocalStateProvider</class>
+            <property name="Directory">../data/state/local</property>
+            <property name="Always Sync">false</property>
+            <property name="Partitions">16</property>
+            <property name="Checkpoint Interval">2 mins</property>
+        </local-provider>
+    </stateManagement>

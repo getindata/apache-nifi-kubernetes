@@ -1,0 +1,44 @@
+{{- if .Values.auth.ranger.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nifi-registry-ranger-security
+  labels:
+    app: {{ include "nifireg.fullname" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  ranger-nifi-registry-security.xml: |
+    <configuration  xmlns:xi="http://www.w3.org/2001/XInclude">
+      <property>
+        <name>ranger.plugin.nifi-registry.policy.cache.dir</name>
+        <value>/etc/ranger/nifi-registry/policycache</value>
+      </property>
+      <property>
+        <name>ranger.plugin.nifi-registry.policy.pollIntervalMs</name>
+        <value>30000</value>
+      </property>
+      <property>
+        <name>ranger.plugin.nifi-registry.policy.rest.client.connection.timeoutMs</name>
+        <value>120000</value>
+      </property>
+      <property>
+        <name>ranger.plugin.nifi-registry.policy.rest.client.read.timeoutMs</name>
+        <value>30000</value>
+      </property>
+      <property>
+        <name>ranger.plugin.nifi-registry.policy.rest.url</name>
+        <value>http://{{ .Values.auth.ranger.host }}:{{ .Values.auth.ranger.port }}</value>
+      </property>
+      <property>
+        <name>ranger.plugin.nifi-registry.policy.source.impl</name>
+        <value>org.apache.ranger.admin.client.RangerAdminRESTClient</value>
+      </property>
+      <property>
+        <name>ranger.plugin.nifi-registry.service.name</name>
+        <value>nifi-registry</value>
+      </property>
+    </configuration>
+{{- end }}

@@ -1,0 +1,59 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nifi-registry-identity
+  labels:
+    app: {{ include "nifireg.name" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  identity-providers.xml: |
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <identityProviders>
+    <provider>
+        <identifier>ldap-identity-provider</identifier>
+        <class>org.apache.nifi.registry.security.ldap.LdapIdentityProvider</class>
+        <property name="Authentication Strategy">LDAPS</property>
+        <property name="Manager DN">{{ .Values.auth.ldap.managerDn }}</property>
+        <property name="Manager Password">{{ .Values.auth.ldap.password }}</property>
+        <property name="Url">{{ .Values.auth.ldap.host }}</property>
+        <property name="Referral Strategy">FOLLOW</property>
+        <property name="Connect Timeout">10 secs</property>
+        <property name="Read Timeout">10 secs</property>
+
+        <property name="TLS - Keystore">/opt/nifi-registry/nifi-registry-current/conf/keystore.jks</property>
+        <property name="TLS - Keystore Password"></property>
+        <property name="TLS - Keystore Type">JKS</property>
+        <property name="TLS - Truststore">/opt/nifi-registry/nifi-registry-current/conf/truststore.jks</property>
+        <property name="TLS - Truststore Password"></property>
+        <property name="TLS - Truststore Type">JKS</property>
+        <property name="TLS - Client Auth">WANT</property>
+        <property name="TLS - Protocol">TLS</property>
+        <property name="TLS - Shutdown Gracefully"></property>
+
+        <property name="User Search Base">{{ .Values.auth.ldap.searchBaseUsers }}</property>
+        <property name="User Search Filter">{{ .Values.auth.ldap.searchFilterUsers }}</property>
+        <property name="User Object Class">person</property>
+        <property name="Identity Strategy">USE_USERNAME</property>
+
+        <property name="Group Search Base">{{ .Values.auth.ldap.searchBaseGroup }}</property>
+        <property name="Group Object Class">group</property>
+        <property name="Group Search Scope">ONE_LEVEL</property>
+        <property name="Group Search Filter"></property>
+        <property name="Group Name Attribute">cn</property>
+        <property name="Group Member Attribute">member</property>
+        <property name="Group Member Attribute - Referenced User Attribute"></property>
+        <property name="Authentication Expiration">12 hours</property>
+    </provider>
+        <!-- To enable the kerberos-identity-provider remove 2 lines. This is 1 of 2.
+        <provider>
+            <identifier>kerberos-identity-provider</identifier>
+            <class>org.apache.nifi.registry.web.security.authentication.kerberos.KerberosIdentityProvider</class>
+            <property name="Default Realm">NIFI.APACHE.ORG</property>
+            <property name="Authentication Expiration">12 hours</property>
+            <property name="Enable Debug">false</property>
+        </provider>
+        To enable the kerberos-provider remove 2 lines. This is 2 of 2. -->
+    </identityProviders>

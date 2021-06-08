@@ -1,0 +1,57 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nifi-registry-providers
+  labels:
+    app: {{ include "nifireg.fullname" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  providers.xml: |
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <providers>
+
+        <!--
+        <flowPersistenceProvider>
+            <class>org.apache.nifi.registry.provider.flow.FileSystemFlowPersistenceProvider</class>
+            <property name="Flow Storage Directory">./flow_storage</property>
+        </flowPersistenceProvider>
+        -->
+
+        <flowPersistenceProvider>
+            <class>org.apache.nifi.registry.provider.flow.git.GitFlowPersistenceProvider</class>
+            <property name="Flow Storage Directory">./git_storage</property>
+            <property name="Remote To Push">origin</property>
+            <property name="Remote Access User">{{ .Values.config.git.username }}</property>
+            <property name="Remote Access Password">{{ .Values.config.git.password }}</property>
+        </flowPersistenceProvider>
+
+        <extensionBundlePersistenceProvider>
+            <class>org.apache.nifi.registry.provider.extension.FileSystemBundlePersistenceProvider</class>
+            <property name="Extension Bundle Storage Directory">./extension_bundles</property>
+        </extensionBundlePersistenceProvider>
+
+        <!--
+        <eventHookProvider>
+            <class>org.apache.nifi.registry.provider.hook.ScriptEventHookProvider</class>
+            <property name="Script Path"></property>
+            <property name="Working Directory"></property>
+            -->
+            <!-- Optional Whitelist Event types
+            <property name="Whitelisted Event Type 1">CREATE_FLOW</property>
+            <property name="Whitelisted Event Type 2">DELETE_FLOW</property>
+            -->
+        <!--
+        </eventHookProvider>
+        -->
+
+        <!-- This will log all events to a separate file specified by the EVENT_APPENDER in logback.xml -->
+        <!--
+        <eventHookProvider>
+            <class>org.apache.nifi.registry.provider.hook.LoggingEventHookProvider</class>
+        </eventHookProvider>
+        -->
+
+    </providers>

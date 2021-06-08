@@ -1,0 +1,15 @@
+---
+apiVersion: v2
+name: nifi-registry
+version: 0.8.0
+appVersion: 0.8.0
+description: Apache NiFi Registry is a complementary application that provides a central location for storage and management of shared resources across one or more instances of NiFi or MiNiFi.
+keywords:
+  - nifi
+  - data
+  - process
+home: https://nifi.apache.org/registry.html
+icon: https://nifi.apache.org/assets/images/registry-logo.png
+maintainers:
+  - name: alewandowski
+    email: albert.lewandowski@getindata.com

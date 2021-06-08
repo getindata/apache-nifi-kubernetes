@@ -1,0 +1,4 @@
+Apache NiFi Registry is deployed!
+
+You can check it here:
+{{- if .Values.config.security.https.enabled }}https{{- else }}http{{- end }}://{{ .Values.ingress.hosts }}/nifi-registry

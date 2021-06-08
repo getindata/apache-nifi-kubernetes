@@ -1,0 +1,52 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nifi-registry-bootstrap
+  labels:
+    app: {{ include "nifireg.fullname" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  bootstrap.conf: |
+    # Java command to use when running nifi-registry
+    java=java
+
+    # Username to use when running nifi-registry. This value will be ignored on Windows.
+    run.as=
+
+    # Configure the working directory for launching the NiFi Registry process
+    # If not specified, the working directory will fall back to using the NIFI_REGISTRY_HOME env variable
+    # If the environment variable is not specified, the working directory will fall back to the parent of this file's parent
+    working.dir=
+
+    # Configure where nifi-registry's lib and conf directories live
+    lib.dir=./lib
+    conf.dir=./conf
+    docs.dir=./docs
+
+    # How long to wait after telling nifi-registry to shutdown before explicitly killing the Process
+    graceful.shutdown.seconds=20
+
+    # Disable JSR 199 so that we can use JSP's without running a JDK
+    java.arg.1=-Dorg.apache.jasper.compiler.disablejsr199=true
+
+    # JVM memory settings
+    java.arg.2=-Xms{{ .Values.jvm.xms }}
+    java.arg.3=-Xmx{{ .Values.jvm.xmx }}
+
+    # Enable Remote Debugging
+    #java.arg.debug=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=8000
+
+    java.arg.4=-Djava.net.preferIPv4Stack=true
+
+    # allowRestrictedHeaders is required for Cluster/Node communications to work properly
+    java.arg.5=-Dsun.net.http.allowRestrictedHeaders=true
+    java.arg.6=-Djava.protocol.handler.pkgs=sun.net.www.protocol
+    
+    # Issue: https://issues.apache.org/jira/browse/NIFIREG-429 
+    java.arg.7=-Dspring.flyway.table=schema_version
+
+    # Master key in hexadecimal format for encrypted sensitive configuration values
+    nifi.registry.bootstrap.sensitive.key=0123456789ABCDEFFEDCBA98765432100123456789ABCDEFFEDCBA9876543210

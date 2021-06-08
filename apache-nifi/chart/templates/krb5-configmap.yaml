@@ -1,0 +1,23 @@
+{{- if .Values.kerberos.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "apache-nifi.fullname" . }}-krb5
+  labels:
+    app: {{ template "apache-nifi.name" . }}
+    chart: {{ template "apache-nifi.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  krb5.conf: |+
+    [libdefaults]
+      renew_lifetime = 7d
+      forwardable = true
+      default_realm = GETINDATA.COM
+      ticket_lifetime = 24h
+      dns_lookup_realm = false
+      dns_lookup_kdc = true
+      default_ccache_name = /tmp/krb5cc_%{uid}
+      #default_tgs_enctypes = aes des3-cbc-sha1 rc4 des-cbc-md5
+      #default_tkt_enctypes = aes des3-cbc-sha1 rc4 des-cbc-md5
+{{- end }}

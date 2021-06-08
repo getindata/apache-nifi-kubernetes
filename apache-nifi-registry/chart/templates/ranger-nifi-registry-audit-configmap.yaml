@@ -1,0 +1,20 @@
+{{- if .Values.auth.ranger.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nifi-registry-ranger-audit
+  labels:
+    app: {{ include "nifireg.fullname" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  ranger-nifi-registry-audit.xml: |
+    <configuration  xmlns:xi="http://www.w3.org/2001/XInclude">
+      <property>
+        <name>xasecure.audit.destination.hdfs.dir</name>
+        <value>hdfs://{{ .Values.auth.ranger.hdfs }}/ranger/audit</value>
+      </property>
+    </configuration>
+{{- end }}

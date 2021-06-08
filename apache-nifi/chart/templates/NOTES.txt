@@ -1,0 +1,15 @@
+Cluster endpoint IP address will be available at:
+kubectl get svc {{ .Release.Name }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[*].ip}'
+
+{{- if .Values.ingress.enabled }}
+NiFi domain is {{ .Values.ingress.hosts }}
+{{- end }}
+
+{{- if .Values.properties.httpsPort }}
+Check if your Ingress supports TLS passthrough!
+{{- end }}
+
+Your NiFi instance is available at:
+  {{- if .Values.properties.httpsPort }}https{{- else }}http{{- end }}://{{ .Values.ingress.hosts }}/nifi
+Or at:
+   kubectl get svc {{ .Release.Name }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[*].ip}'

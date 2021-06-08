@@ -1,0 +1,39 @@
+image: alpine/helm:3.5.4
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+stages:
+  - test
+
+#-----------#
+# TEMPLATES #
+#-----------#
+
+.helm_test: &helm_test
+  stage: test
+  script:
+    - helm template --dry-run ${DIR_NAME}
+    - helm lint ${DIR_NAME}
+
+#------#
+# JOBS #
+#------#
+
+NiFiHelmTest:
+  extends: helm_test
+  only:
+    changes:
+      - "apache-nifi/chart/*/*"
+      - "apache-nifi/chart/values*"
+  variables:
+    DIR_NAME: "apache-nifi/chart"
+
+NiFiRegistryHelmTest:
+  extends: helm_test
+  only:
+    changes:
+      - "apache-nifi-registry/chart/*/*"
+      - "apache-nifi-registry/chart/values*"
+  variables:
+    DIR_NAME: "apache-nifi-registry/chart"

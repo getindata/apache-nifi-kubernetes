@@ -1,0 +1,176 @@
+---
+
+# Number of nifi registry nodes
+replicaCount: 1
+
+image:
+  repository: apache/nifi-registry
+  tag: "0.8.0"
+  pullPolicy: Always
+  pullSecret: regcred
+
+securityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+
+# headless service
+headless:
+  type: LoadBalancer
+  # It can be useful for setting up IP if we already have created Load Balancer
+  # ip: 127.0.0.1
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+
+sts:
+  podManagementPolicy: Parallel
+
+resources:
+  requests:
+    cpu: 2000m
+    memory: 4096Mi
+  limits:
+    cpu: 2000m
+    memory: 4096Mi
+
+jvm:
+  xmx: "1024m"
+  xms: "1024m"
+
+kerberos:
+  enabled: true
+
+config:
+  security:
+    https:
+      enabled: true
+    certificateName: nifi-registry-ca-cs
+  ports:
+    http: 18080
+    https: 18443
+  db:
+    class: "org.postgresql.Driver"
+    username: nifiregistry
+    password: dbpasswordtoreplace
+    host: pgpool-getindata.com
+    port: 5433
+    dbname: nifiregistryk8s
+  git:
+    address: gitlab.com/getindata/registry
+    repo: data-pipelines-nifi-registry
+    username: nifi.registry
+    password: password
+
+auth:
+  ldap:
+    enabled: false
+    managerDn: cn=ad,ou=users,dc=getindata,dc=com
+    host: ldaps://getindata.com:636
+    password: ldappasswordtoreplace
+    searchBaseUsers: dc=getindata,dc=com,dc=pl
+    searchBaseGroup: dc=getindata,dc=com,dc=pl
+    searchFilterUsers: (sAMAccountName={0})
+    searchFilterGroups: objectclass=group
+  ranger:
+    enabled: false
+    host: master-01.getindata.com
+    port: 6080
+    hdfs: getindata
+
+nifi_access_internal: true
+
+serviceType: LoadBalancer
+
+## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+nodeSelector:
+  node: nifi
+
+flow_persistence:
+  mode: "git"
+  git:
+    remote: origin
+
+## Configure Ingress based on the documentation here: https://kubernetes.io/docs/concepts/services-networking/ingress/
+## It requires support of SSL Passthrough from the Ingress side
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    ingress.kubernetes.io/ssl-redirect: "true"
+    virtual-server.f5.com/ip: "127.0.0.1"
+  tls:
+    secret: nifireg-getindata-tls-secret
+  hosts: nifireg.getindata.com
+  path: /
+
+extraVolumes:
+  - name: nifi-registry-authorizers
+    configMap:
+      name: nifi-registry-authorizers
+  - name: nifi-registry-bootstrap
+    configMap:
+      name: nifi-registry-bootstrap
+  - name: nifi-registry-identity
+    configMap:
+      name: nifi-registry-identity
+  - name: krb5-conf
+    configMap:
+      name: nifi-registry-krb5
+  - name: nifi-registry-logback
+    configMap:
+      name: nifi-registry-logback
+  - name: nifi-registry-properties
+    configMap:
+      name: nifi-registry-properties
+  - name: nifi-registry-providers
+    configMap:
+      name: nifi-registry-providers
+  - name: ranger-audit
+    configMap:
+      name: nifi-registry-ranger-audit
+  - name: ranger-security
+    configMap:
+      name: nifi-registry-ranger-security
+  - name: keystore
+    secret:
+      secretName: nifi-registry-certs
+      items:
+        - key: keystore.jks
+          path: keystore.jks
+  - name: truststore
+    secret:
+      secretName: nifi-registry-certs
+      items:
+        - key: truststore.jks
+          path: truststore.jks
+
+extraVolumeMounts:
+  - name: nifi-registry-configs
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/authorizers.xml
+    subPath: nifi-registry.properties
+  - name: nifi-registry-bootstrap
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/bootstrap.conf
+    subPath: bootstrap.conf
+  - name: nifi-registry-identity
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/identity-providers.xml
+    subPath: identity-providers.xml
+  - name: krb5-conf
+    mountPath: /etc/krb5.conf
+    subPath: /etc/krb5.conf
+  - name: nifi-registry-logback
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/logback.xml
+    subPath: logback.xml
+  - name: nifi-registry-properties
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/nifi-registry.properties
+    subPath: nifi-registry.properties
+  - name: nifi-registry-providers
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/providers.xml
+    subPath: providers.xml
+  - name: nfs-git-storage
+    mountPath: /opt/nifi-registry/nifi-registry-current/git_storage
+  - name: truststore
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/truststore.jks
+    subPath: truststore.jks
+  - name: keystore
+    mountPath: /opt/nifi-registry/nifi-registry-current/conf/keystore.jks
+    subPath: keystore.jks

@@ -1,0 +1,111 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nifi-registry-properties
+  labels:
+    app: {{ include "nifireg.fullname" . | quote }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+data:
+  nifi-registry.properties: |
+    # web properties #
+    nifi.registry.web.war.directory=./lib
+    {{- if .Values.config.security.https.enabled }}
+    nifi.registry.web.http.host=
+    nifi.registry.web.https.port={{ .Values.config.ports.https }}
+    {{- else }}
+    nifi.registry.web.http.port={{ .Values.config.ports.http }}
+    nifi.registry.web.https.port=
+    {{- end }}
+    nifi.registry.web.jetty.working.directory=./work/jetty
+    nifi.registry.web.jetty.threads=200
+
+    {{- if .Values.auth.ranger.enabled }}
+    # security properties #
+    nifi.registry.extension.dir.ranger=/opt/nifi-registry/nifi-registry-current/ext/ranger/lib
+    {{- end }}
+
+    nifi.registry.security.keystore=/opt/nifi-registry/nifi-registry-current/conf/keystore.jks
+    nifi.registry.security.keystoreType=jks
+    nifi.registry.security.keystorePasswd=
+    nifi.registry.security.keyPasswd=
+    nifi.registry.security.truststore=/opt/nifi-registry/nifi-registry-current/conf/truststore.jks
+    nifi.registry.security.truststoreType=jks
+    nifi.registry.security.truststorePasswd=
+    nifi.registry.security.needClientAuth=false
+    nifi.registry.security.authorizers.configuration.file=/opt/nifi-registry/nifi-registry-current/conf/authorizers.xml
+
+    {{- if .Values.auth.ranger.enabled }}
+    nifi.registry.security.authorizer=ranger-authorizer
+    {{- else }}
+    nifi.registry.security.authorizer=file-authorizer
+    {{- end }}
+    nifi.registry.security.identity.providers.configuration.file=/opt/nifi-registry/nifi-registry-current/conf/new-identity-providers.xml
+
+    {{- if .Values.auth.ldap.enabled }}
+    nifi.registry.security.identity.provider=ldap-identity-provider
+    {{- else }}
+    nifi.registry.security.identity.provider=file-identity-provider
+    {{- end }}
+
+    # sensitive property protection properties #
+    # nifi.registry.sensitive.props.additional.keys=
+
+    # providers properties #
+    nifi.registry.providers.configuration.file=/opt/nifi-registry/nifi-registry-current/conf/providers.xml
+
+    # legacy database properties, used to migrate data from original DB to new DB below
+    # NOTE: Users upgrading from 0.1.0 should leave these populated, but new installs after 0.1.0 should leave these empty
+    nifi.registry.db.directory=
+    nifi.registry.db.url.append=
+
+    # database properties
+
+    nifi.registry.db.directory=./database
+    nifi.registry.db.url.append=;LOCK_TIMEOUT=25000;WRITE_DELAY=0;AUTO_SERVER=FALSE
+
+    # database properties
+
+    nifi.registry.db.url=jdbc:postgresql://{{ .Values.config.db.host }}:{{ .Values.config.db.port }}/{{ .Values.config.db.dbname }}
+
+    nifi.registry.db.driver.class={{ .Values.config.db.class }}
+    nifi.registry.db.driver.directory=/opt/nifi-registry/current/lib
+    nifi.registry.db.username={{ .Values.config.db.username }}
+    nifi.registry.db.password={{ .Values.config.db.password }}
+    nifi.registry.db.maxConnections=5
+    nifi.registry.db.sql.debug=false
+    nifi.registry.db.maxLifetime=600000
+
+    # extension directories #
+    # Each property beginning with "nifi.registry.extension.dir." will be treated as location for an extension,
+    # and a class loader will be created for each location, with the system class loader as the parent
+    #
+
+    # nifi.registry.extension.dir.1=/opt/nifi-registry/nifi-registry-current/lib
+
+    # Identity Mapping Properties #
+    # These properties allow normalizing user identities such that identities coming from different identity providers
+    # (certificates, LDAP, Kerberos) can be treated the same internally in NiFi. The following example demonstrates normalizing
+    # DNs from certificates and principals from Kerberos into a common identity string:
+    #
+    # nifi.registry.security.identity.mapping.pattern.dn=^CN=(.*?), OU=(.*?), O=(.*?), L=(.*?), ST=(.*?), C=(.*?)$
+    # nifi.registry.security.identity.mapping.value.dn=$1@$2
+    # nifi.registry.security.identity.mapping.pattern.kerb=^(.*?)/instance@(.*?)$
+    # nifi.registry.security.identity.mapping.value.kerb=$1@$2
+    
+    # Users and groups mapping
+    nifi.security.identity.mapping.pattern.dn=^cn=(.*?) (.*?),ou=(.*?),ou=(.*?),dc=(.*?),dc=(.*?),dc=(.*?)$
+    nifi.security.identity.mapping.value.dn=$1.$2
+    nifi.security.identity.mapping.transform.dn=LOWER
+    
+    nifi.security.group.mapping.pattern.anygroup=^(.*)$
+    nifi.security.group.mapping.value.anygroup=$1
+    nifi.security.group.mapping.transform.anygroup=LOWER
+
+    # kerberos properties #
+    nifi.registry.kerberos.krb5.file=/etc/krb5.conf
+    nifi.registry.kerberos.spnego.principal=
+    nifi.registry.kerberos.spnego.keytab.location=
+    nifi.registry.kerberos.spnego.authentication.expiration=12 hours
