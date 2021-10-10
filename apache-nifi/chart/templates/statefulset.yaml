@@ -476,14 +476,12 @@ spec:
         configMap:
           name: {{ .name }}
       {{- end }}
-{{- if not .Values.persistence.enabled }}
       - name: logs
         emptyDir: {}
       - name: krb5-temp
         emptyDir: {}
       - name: jdk-link
         emptyDir: {}
-{{- end }}
 {{- if .Values.extraVolumes }}
 {{ toYaml .Values.extraVolumes | indent 6 }}
 {{- end }}
